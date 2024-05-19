@@ -1,18 +1,20 @@
 {
   "name": "notion-cms-adaptor",
   "description": "A CMS adaptor for Notion",
+  "type": "module",
   "main": "./build",
   "types": "./build/index.d.ts",
   "version": "1.0.0",
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "test": "tsc --project tsconfig.test.json"
   },
   "files": [
     "build"
   ],
   "devDependencies": {
     "encoding": "^0.1.13",
-    "typescript": "^5.0.0"
+    "typescript": "^5.4.5"
   },
   "dependencies": {
     "@notionhq/client": "^2.2.15"

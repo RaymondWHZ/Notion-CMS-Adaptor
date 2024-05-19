@@ -42,7 +42,7 @@ const client = createNotionDBClient({
   dbSchemas,
 });
 
-expectType<Project[]>(await client.query('projects', {
+expectType<Promise<Project[]>>(client.query('projects', {
   // Raw Notion API query parameters
   // Only without database_id and filter_properties as they are managed by framework
   sorts: [{
@@ -57,7 +57,7 @@ expectType<Project[]>(await client.query('projects', {
   }
 }))
 
-expectType<Project>(await client.insertEntry('projects', {
+expectType<Promise<Project>>(client.insertEntry('projects', {
   status: 'in-progress'
 }))
 

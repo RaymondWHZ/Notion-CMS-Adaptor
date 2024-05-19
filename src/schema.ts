@@ -4,7 +4,7 @@ import type {
   NotionMutablePropertyDefinition,
   NotionPropertyTypeEnum,
   ValueHandler,
-  ValueType, ValueComposer
+  ValueType, ValueComposer, NotionMutablePropertyTypeEnum, MutateValueType
 } from "./types";
 import type {RichTextItemResponse} from "@notionhq/client/build/src/api-endpoints";
 
@@ -48,30 +48,37 @@ const makeDefaultOptions = <T extends NotionPropertyTypeEnum>(type: T) => {
   }
 }
 
-const makeMutableDefaultOptions = <T extends NotionPropertyTypeEnum>(type: T) => {
-  const valueToRaw: NotionMutablePropertyDefinition<T, ValueType<T>> = {
+const makeMutableDefaultOptions = <T extends NotionMutablePropertyTypeEnum>(type: T) => {
+  const valueToRaw: NotionMutablePropertyDefinition<T, ValueType<T>, MutateValueType<T>> = {
     type,
     handler: value => value,
     composer: value => value
   }
   return {
-    raw(): NotionMutablePropertyDefinition<T, ValueType<T>> {
+    raw(): NotionMutablePropertyDefinition<T, ValueType<T>, MutateValueType<T>> {
       return valueToRaw;
     },
-    rawWithDefault(defaultValue: NonNullable<ValueType<T>>): NotionMutablePropertyDefinition<T, NonNullable<ValueType<T>>> {
+    rawWithDefault(defaultValue: NonNullable<ValueType<T>>): NotionMutablePropertyDefinition<T, NonNullable<ValueType<T>>, MutateValueType<T>> {
       return {
         type,
         handler: value => value ?? defaultValue,
         composer: value => value
       }
     },
-    handleAndComposeUsing<R>({ handler, composer }: { handler: ValueHandler<T, R>, composer: ValueComposer<R> }): NotionMutablePropertyDefinition<T, R> {
+    handleUsing<R>(handler: ValueHandler<T, R>): NotionMutablePropertyDefinition<T, R, MutateValueType<T>> {
+      return {
+        type,
+        handler,
+        composer: value => value
+      }
+    },
+    handleAndComposeUsing<R, I = R>({ handler, composer }: { handler: ValueHandler<T, R>, composer: ValueComposer<T, I> }): NotionMutablePropertyDefinition<T, R, I> {
       return {
         type,
         handler,
         composer
       }
-    }
+    },
   }
 }
 
@@ -116,7 +123,7 @@ export type DateRange = {
 const dateOptions = {
   ...makeMutableDefaultOptions('date'),
   dateRange() {
-    return this.handleAndComposeUsing({
+    return this.handleAndComposeUsing<DateRange>({
       handler: (value) => {
         return {
           start: value?.start ?? '',
@@ -142,7 +149,7 @@ export function email() {
 }
 
 const filesOptions = {
-  ...makeDefaultOptions('files'),
+  ...makeMutableDefaultOptions('files'),
   urls() {
     return this.handleUsing((value) => value.reduce((acc, file) => {
       let result: string | undefined = undefined;
@@ -302,7 +309,7 @@ export function number() {
 }
 
 const peopleOptions = {
-  ...makeDefaultOptions('people'),
+  ...makeMutableDefaultOptions('people'),
   names() {
     return this.handleUsing(value => value.reduce((acc, person) => {
       if ('name' in person) {
@@ -404,10 +411,10 @@ export function rollup() {
 
 const selectOptions = {
   ...makeMutableDefaultOptions('select'),
-  string() {
+  optionalString() {
     return this.handleAndComposeUsing({
-      handler: value => value?.name ?? '',
-      composer: (value) => ({ name: value })
+      handler: value => value?.name,
+      composer: (value) => value ? ({ name: value }) : null
     })
   },
   stringEnum<T extends string | undefined>(...values: T[]) {
@@ -423,7 +430,7 @@ const selectOptions = {
         if (!values.includes(value)) {
           throw Error('Invalid status: ' + value);
         }
-        return { name: value };
+        return value ? ({ name: value }) : null;
       }
     });
   },

@@ -1,10 +1,9 @@
 {
   "name": "notion-cms-adaptor",
   "description": "A CMS adaptor for Notion",
-  "type": "module",
   "main": "./build",
   "types": "./build/index.d.ts",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "scripts": {
     "build": "tsc",
     "test": "tsc --project tsconfig.test.json"

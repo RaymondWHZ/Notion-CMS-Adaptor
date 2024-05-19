@@ -1,5 +1,5 @@
 import type {
-  CreatePageParameters, DatabaseObjectResponse,
+  DatabaseObjectResponse,
   PageObjectResponse, PartialDatabaseObjectResponse, PartialPageObjectResponse,
   QueryDatabaseParameters
 } from "@notionhq/client/build/src/api-endpoints";
@@ -9,9 +9,9 @@ import type {
   DBSchemasType,
   DBSchemaType,
   DBSchemaValueDefinition, NotionPageContent,
-  NotionPropertyTypeEnum, ValueComposer,
+  NotionPropertyTypeEnum, NotionMutationProperties, ValueComposer,
   ValueHandler,
-  ValueType
+  ValueType, NotionMutablePropertyTypeEnum
 } from "./types";
 
 function isAllFullPage(results: Array<PageObjectResponse | PartialPageObjectResponse | DatabaseObjectResponse | PartialDatabaseObjectResponse>): results is Array<PageObjectResponse> {
@@ -71,8 +71,8 @@ function processKVResults<
 function createMutateData<T extends DBSchemaType>(
   data: DBMutateInfer<T>,
   schema: T
-): CreatePageParameters['properties'] {
-  const transformedData = {} as CreatePageParameters['properties'];
+): NotionMutationProperties {
+  const transformedData = {} as NotionMutationProperties;
   for (const [key, value] of Object.entries(data) as [keyof T, any][]) {
     const def: DBSchemaValueDefinition = schema[key];
     if (def === '__id') {
@@ -81,7 +81,7 @@ function createMutateData<T extends DBSchemaType>(
     if (!('composer' in def)) {
       throw Error('Cannot mutate without composer');
     }
-    const type: NotionPropertyTypeEnum = def.type;
+    const type: NotionMutablePropertyTypeEnum = def.type;
     const [name] = key.toString().split('__', 1);
     const composer = def.composer as ValueComposer<typeof type>;
     transformedData[name] = composer(value);
@@ -147,6 +147,20 @@ export function createNotionDBClient<
       clearDatabaseIdMap();
       throw e;
     }
+  }
+
+  async function assertPageInDatabase(db: DBName, pageId: string) {
+    await useDatabaseId(db, async (id) => {
+      const page = await client.pages.retrieve({
+        page_id: pageId
+      });
+      if (!isFullPage(page)) {
+        throw Error('Not a full page');
+      }
+      if (page.parent.type !== 'database_id' || page.parent.database_id !== id) {
+        throw Error('Page not found in database');
+      }
+    });
   }
 
   return {
@@ -286,6 +300,7 @@ export function createNotionDBClient<
     },
 
     async updateEntry<T extends DBName>(db: T, id: string, data: DBMutateInfer<S[T]>): Promise<DBInfer<S[T]>> {
+      await assertPageInDatabase(db, id);
       const result = await client.pages.update({
         page_id: id,
         properties: createMutateData(data, dbSchemas[db])
@@ -294,6 +309,14 @@ export function createNotionDBClient<
         throw Error('Not a full page');
       }
       return processRow(result, dbSchemas[db]);
+    },
+
+    async deleteEntry(db: DBName, id: string): Promise<void> {
+      await assertPageInDatabase(db, id);
+      await client.pages.update({
+        page_id: id,
+        in_trash: true
+      });
     }
   };
 }

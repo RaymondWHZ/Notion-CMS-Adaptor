@@ -8,15 +8,31 @@ import type {
 } from "./types";
 import type {RichTextItemResponse} from "@notionhq/client/build/src/api-endpoints";
 
+/**
+ * A type safe way to define database schemas. Directly return the schema object.
+ * @param schema The schema object
+ */
 export function createDBSchemas<T extends DBSchemasType>(schema: T): typeof schema {
   return schema;
 }
 
-function packPlainText(arr: RichTextItemResponse[]): string {
+/**
+ * Convert a list of rich text items to a plain text string.
+ * @param arr The list of rich text items
+ */
+export function packPlainText(arr: RichTextItemResponse[]): string {
   return arr.reduce((acc, cur) => acc + cur.plain_text, '');
 }
 
-function convertNotionImage(pageId: string, preSignedUrl: string) {
+/**
+ * Rewrite the preSignedUrl to use Notion's image optimization service, assuming the preSignedUrl is a Notion image.
+ *
+ * This is not an official API and may break at any time. Use at your own risk.
+ *
+ * @param pageId The id of the page containing the image
+ * @param preSignedUrl The preSignedUrl of the image
+ */
+export function convertNotionImage(pageId: string, preSignedUrl: string) {
   return 'https://www.notion.so/image/' +
     encodeURIComponent(preSignedUrl.split('?')[0]) +
     '?id=' +
@@ -30,15 +46,26 @@ const makeDefaultOptions = <T extends NotionPropertyTypeEnum>(type: T) => {
     handler: value => value
   };
   return {
+    /**
+     * Directly return the raw value. Does not support mutation.
+     */
     raw(): NotionPropertyDefinition<T, ValueType<T>> {
       return valueToRaw;
     },
+    /**
+     * Directly return the raw value with a default value if the value is null or undefined. Does not support mutation.
+     * @param defaultValue The default value
+     */
     rawWithDefault(defaultValue: NonNullable<ValueType<T>>): NotionPropertyDefinition<T, NonNullable<ValueType<T>>> {
       return {
         type,
         handler: value => value ?? defaultValue,
       }
     },
+    /**
+     * Handle the value using a custom handler. Does not support mutation.
+     * @param handler The custom handler
+     */
     handleUsing<R>(handler: ValueHandler<T, R>): NotionPropertyDefinition<T, R> {
       return {
         type,
@@ -55,9 +82,16 @@ const makeMutableDefaultOptions = <T extends NotionMutablePropertyTypeEnum>(type
     composer: value => value
   }
   return {
+    /**
+     * Directly return the raw value. Supports mutation.
+     */
     raw(): NotionMutablePropertyDefinition<T, ValueType<T>, MutateValueType<T>> {
       return valueToRaw;
     },
+    /**
+     * Directly return the raw value with a default value if the value is null or undefined. Supports mutation.
+     * @param defaultValue The default value
+     */
     rawWithDefault(defaultValue: NonNullable<ValueType<T>>): NotionMutablePropertyDefinition<T, NonNullable<ValueType<T>>, MutateValueType<T>> {
       return {
         type,
@@ -65,6 +99,10 @@ const makeMutableDefaultOptions = <T extends NotionMutablePropertyTypeEnum>(type
         composer: value => value
       }
     },
+    /**
+     * Handle the value using a custom handler. Supports mutation using the raw underlying value.
+     * @param handler The custom handler
+     */
     handleUsing<R>(handler: ValueHandler<T, R>): NotionMutablePropertyDefinition<T, R, MutateValueType<T>> {
       return {
         type,
@@ -72,6 +110,11 @@ const makeMutableDefaultOptions = <T extends NotionMutablePropertyTypeEnum>(type
         composer: value => value
       }
     },
+    /**
+     * Handle the value using a custom handler. Supports mutation via a custom composer.
+     * @param handler The custom handler
+     * @param composer The custom composer
+     */
     handleAndComposeUsing<R, I = R>({ handler, composer }: { handler: ValueHandler<T, R>, composer: ValueComposer<T, I> }): NotionMutablePropertyDefinition<T, R, I> {
       return {
         type,
@@ -82,36 +125,58 @@ const makeMutableDefaultOptions = <T extends NotionMutablePropertyTypeEnum>(type
   }
 }
 
+/**
+ * Special definition that represents the id of the page.
+ */
 export function __id() {
   return '__id' as const;
 }
 
 const checkboxOptions = {
   ...makeMutableDefaultOptions('checkbox'),
+  /**
+   * Convert the value to a boolean. Supports mutation.
+   */
   boolean() {
     return this.raw();
   }
 }
+
+/**
+ * Define a checkbox property.
+ */
 export function checkbox() {
   return checkboxOptions;
 }
 
 const createdByOptions = {
   ...makeDefaultOptions('created_by'),
+  /**
+   * Get the name of the creator. Does not support mutation.
+   */
   name() {
     return this.handleUsing(value => 'name' in value ? value.name ?? '' : '')
   }
 }
+/**
+ * Define a created_by property.
+ */
 export function created_by() {
   return createdByOptions;
 }
 
 const createdTimeOptions = {
   ...makeDefaultOptions('created_time'),
+  /**
+   * Get the time string of the creation time. Does not support mutation.
+   */
   timeString() {
     return this.raw();
   }
 }
+/**
+ * Define a created_time property.
+ */
 export function created_time() {
   return createdTimeOptions;
 }
@@ -122,6 +187,9 @@ export type DateRange = {
 }
 const dateOptions = {
   ...makeMutableDefaultOptions('date'),
+  /**
+   * Get the start date of the date range. Supports mutation.
+   */
   dateRange() {
     return this.handleAndComposeUsing<DateRange>({
       handler: (value) => {
@@ -134,22 +202,35 @@ const dateOptions = {
     })
   }
 }
+
+/**
+ * Define a date property.
+ */
 export function date() {
   return dateOptions;
 }
 
 const emailOptions = {
   ...makeMutableDefaultOptions('email'),
+  /**
+   * Get the email string. Supports mutation.
+   */
   string() {
     return this.rawWithDefault('');
   }
 }
+/**
+ * Define an email property.
+ */
 export function email() {
   return emailOptions;
 }
 
 const filesOptions = {
   ...makeMutableDefaultOptions('files'),
+  /**
+   * Get the urls of the files. Supports mutation using the raw underlying value.
+   */
   urls() {
     return this.handleUsing((value) => value.reduce((acc, file) => {
       let result: string | undefined = undefined;
@@ -164,6 +245,9 @@ const filesOptions = {
       return acc.concat(result);
     }, [] as string[]))
   },
+  /**
+   * Get the url of the first file. Supports mutation using the raw underlying value.
+   */
   singleUrl() {
     return this.handleUsing((value) => {
       const file = value[0];
@@ -178,6 +262,11 @@ const filesOptions = {
       return '';
     })
   },
+  /**
+   * Rewrite the preSignedUrl to use Notion's image optimization service, assuming the preSignedUrl is a Notion image.
+   *
+   * This is not an official API and may break at any time. Use at your own risk.
+   */
   notionImageUrls() {
     return this.handleUsing((value, option, pageId) => value.reduce((acc, file) => {
       let result: string | undefined = undefined;
@@ -190,6 +279,11 @@ const filesOptions = {
       return acc.concat(result);
     }, [] as string[]))
   },
+  /**
+   * Rewrite the preSignedUrl of the first image to use Notion's image optimization service, assuming the preSignedUrl is a Notion image.
+   *
+   * This is not an official API and may break at any time. Use at your own risk.
+   */
   singleNotionImageUrl() {
     return this.handleUsing((value, option, pageId) => {
       const file = value[0];
@@ -203,12 +297,18 @@ const filesOptions = {
     })
   }
 }
+/**
+ * Define a files property.
+ */
 export function files() {
   return filesOptions;
 }
 
 const formulaOptions = {
   ...makeDefaultOptions('formula'),
+  /**
+   * Convert the value to string. Does not support mutation.
+   */
   string() {
     return this.handleUsing(value => {
       if (value.type === 'string') {
@@ -223,12 +323,21 @@ const formulaOptions = {
       return '';
     })
   },
+  /**
+   * If the value is boolean and is true, return true; otherwise return false. Does not support mutation.
+   */
   booleanDefaultFalse() {
     return this.handleUsing(value => value.type === 'boolean' ? value.boolean ?? false : false)
   },
+  /**
+   * If the value is number, return the number; otherwise return 0. Does not support mutation.
+   */
   numberDefaultZero() {
     return this.handleUsing(value => value.type === 'number' ? value.number ?? 0 : 0)
   },
+  /**
+   * If the value is date, return the date range; otherwise return a data range with empty start and end. Does not support mutation.
+   */
   dateRange() {
     return this.handleUsing(value => {
       if (value.type === 'date') {
@@ -244,38 +353,59 @@ const formulaOptions = {
     })
   }
 }
+/**
+ * Define a formula property.
+ */
 export function formula() {
   return formulaOptions;
 }
 
 const lastEditedByOptions = {
   ...makeDefaultOptions('last_edited_by'),
+  /**
+   * Get the name of the last editor. Does not support mutation.
+   */
   name() {
     return this.handleUsing(value => 'name' in value ? value.name ?? '' : '')
   }
 }
+/**
+ * Define a last_edited_by property.
+ */
 export function last_edited_by() {
   return lastEditedByOptions;
 }
 
 const lastEditedTimeOptions = {
   ...makeDefaultOptions('last_edited_time'),
+  /**
+   * Get the time string of the last edit time. Does not support mutation.
+   */
   timeString() {
     return this.raw();
   }
 }
+/**
+ * Define a last_edited_time property.
+ */
 export function last_edited_time() {
   return lastEditedTimeOptions;
 }
 
 const multiSelectOptions = {
   ...makeMutableDefaultOptions('multi_select'),
+  /**
+   * Get the names of the options. Supports mutation.
+   */
   strings() {
     return this.handleAndComposeUsing({
       handler: (value) => value.map(option => option.name),
       composer: (value) => value.map(name => ({ name }))
     })
   },
+  /**
+   * Get the names of the options, validating that they are in the provided list of values. Supports mutation.
+   */
   stringEnums<T extends string>(...values: T[]) {
     return this.handleAndComposeUsing({
       handler: value => {
@@ -294,22 +424,34 @@ const multiSelectOptions = {
     });
   }
 }
+/**
+ * Define a multi_select property.
+ */
 export function multi_select() {
   return multiSelectOptions;
 }
 
 const numberOptions = {
   ...makeMutableDefaultOptions('number'),
+  /**
+   * If the value is number, return the number; otherwise return 0. Supports mutation.
+   */
   numberDefaultZero() {
     return this.rawWithDefault(0);
   }
 }
+/**
+ * Define a number property.
+ */
 export function number() {
   return numberOptions;
 }
 
 const peopleOptions = {
   ...makeMutableDefaultOptions('people'),
+  /**
+   * Get the names of the people. Supports mutation using the raw underlying value.
+   */
   names() {
     return this.handleUsing(value => value.reduce((acc, person) => {
       if ('name' in person) {
@@ -319,28 +461,43 @@ const peopleOptions = {
     }, [] as string[]))
   }
 }
+/**
+ * Define a people property.
+ */
 export function people() {
   return peopleOptions;
 }
 
 const phoneNumberOptions = {
   ...makeMutableDefaultOptions('phone_number'),
+  /**
+   * Get the phone number string, default to empty string. Supports mutation.
+   */
   string() {
     return this.rawWithDefault('');
   }
 }
+/**
+ * Define a phone_number property.
+ */
 export function phone_number() {
   return phoneNumberOptions;
 }
 
 const relationOptions = {
   ...makeMutableDefaultOptions('relation'),
+  /**
+   * Get the ids of the relations. Supports mutation.
+   */
   ids() {
     return this.handleAndComposeUsing({
       handler: value => value.map(relation => relation.id),
       composer: (value) => value.map(id => ({ id }))
     });
   },
+  /**
+   * Get the first id of the relations. Supports mutation.
+   */
   singleId() {
     return this.handleAndComposeUsing({
       handler: value => value[0].id,
@@ -348,12 +505,18 @@ const relationOptions = {
     });
   }
 }
+/**
+ * Define a relation property.
+ */
 export function relation() {
   return relationOptions;
 }
 
 const richTextOptions = {
   ...makeMutableDefaultOptions('rich_text'),
+  /**
+   * Get the plain text version of the field. Supports mutation.
+   */
   plainText() {
     return this.handleAndComposeUsing({
       handler: value => packPlainText(value),
@@ -361,6 +524,9 @@ const richTextOptions = {
     })
   }
 }
+/**
+ * Define a rich_text property.
+ */
 export function rich_text() {
   return richTextOptions;
 }
@@ -368,6 +534,9 @@ export function rich_text() {
 export type RollupArrayType = Extract<ValueType<'rollup'>, { type: 'array' }>['array']
 const rollupOptions = {
   ...makeDefaultOptions('rollup'),
+  /**
+   * If the value is date, return the date range; otherwise return a data range with empty start and end. Does not support mutation.
+   */
   dateRange() {
     return this.handleUsing(value => {
       if (value.type === 'date') {
@@ -382,20 +551,20 @@ const rollupOptions = {
       }
     });
   },
+  /**
+   * If the value is number, return the number; otherwise return 0. Does not support mutation.
+   */
   numberDefaultZero() {
     return this.handleUsing(value => {
-      if (value.type === 'date') {
-        return {
-          start: value.date?.start ?? '',
-          end: value.date?.end ?? ''
-        }
+      if (value.type === 'number') {
+        return value.number ?? 0;
       }
-      return {
-        start: '',
-        end: ''
-      }
+      return 0;
     });
   },
+  /**
+   * If the value is an array, handle the array using a custom handler; otherwise throw an error. Does not support mutation.
+   */
   handleArrayUsing<R>(handler: (value: RollupArrayType) => R) {
     return this.handleUsing(value => {
       if (value.type === 'array') {
@@ -405,18 +574,27 @@ const rollupOptions = {
     });
   }
 }
+/**
+ * Define a rollup property.
+ */
 export function rollup() {
   return rollupOptions;
 }
 
 const selectOptions = {
   ...makeMutableDefaultOptions('select'),
+  /**
+   * Get the name of the option. Supports mutation.
+   */
   optionalString() {
     return this.handleAndComposeUsing({
       handler: value => value?.name,
       composer: (value) => value ? ({ name: value }) : null
     })
   },
+  /**
+   * Get the name of the option, validating that it is in the provided list of values. Supports mutation.
+   */
   stringEnum<T extends string | undefined>(...values: T[]) {
     return this.handleAndComposeUsing({
       handler: value => {
@@ -435,18 +613,27 @@ const selectOptions = {
     });
   },
 }
+/**
+ * Define a select property.
+ */
 export function select() {
   return selectOptions;
 }
 
 const statusOptions = {
   ...makeMutableDefaultOptions('status'),
+  /**
+   * Get the name of the status. Supports mutation.
+   */
   string() {
     return this.handleAndComposeUsing({
       handler: value => value?.name ?? '',
       composer: (value) => ({ name: value })
     })
   },
+  /**
+   * Get the name of the status, validating that it is in the provided list of values. Supports mutation.
+   */
   stringEnum<T extends string>(...values: T[]) {
     return this.handleAndComposeUsing({
       handler: value => {
@@ -465,12 +652,18 @@ const statusOptions = {
     });
   },
 }
+/**
+ * Define a status property.
+ */
 export function status() {
   return statusOptions;
 }
 
 const titleOptions = {
   ...makeMutableDefaultOptions('title'),
+  /**
+   * Get the plain text version of the title. Supports mutation.
+   */
   plainText() {
     return this.handleAndComposeUsing({
       handler: value => packPlainText(value),
@@ -478,25 +671,40 @@ const titleOptions = {
     })
   }
 }
+/**
+ * Define a title property.
+ */
 export function title() {
   return titleOptions;
 }
 
 const urlOptions = {
   ...makeMutableDefaultOptions('url'),
+  /**
+   * Get the url string, default to empty string. Supports mutation.
+   */
   string() {
     return this.rawWithDefault('');
   }
 }
+/**
+ * Define a url property.
+ */
 export function url() {
   return urlOptions;
 }
 
 const uniqueIdOptions = {
   ...makeDefaultOptions('unique_id'),
+  /**
+   * Get the number of the unique id. Does not support mutation.
+   */
   number() {
     return this.handleUsing(value => value.number!);
   },
+  /**
+   * Get the string of the unique id with a prefix, same as how it is displayed in Notion. Does not support mutation.
+   */
   stringWithPrefix() {
     return this.handleUsing(value => {
       if (value.prefix) {
@@ -506,6 +714,9 @@ const uniqueIdOptions = {
     });
   }
 }
+/**
+ * Define a unique_id property.
+ */
 export function unique_id() {
   return uniqueIdOptions;
 }
@@ -513,6 +724,9 @@ export function unique_id() {
 const verificationOptions = {
   ...makeDefaultOptions('verification')
 }
+/**
+ * Define a verification property.
+ */
 export function verification() {
   return verificationOptions;
 }

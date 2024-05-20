@@ -90,15 +90,39 @@ function createMutateData<T extends DBSchemaType>(
 }
 
 export interface NotionDBClientOptions<DBS extends DBSchemasType> {
+  /**
+   * The token for the Notion API client.
+   */
   notionToken: string;
+  /**
+   * The ID of the page containing all databases.
+   */
   dbPageId: string;
+  /**
+   * The schemas of all databases.
+   */
   dbSchemas: DBS;
+  /**
+   * The prefix of the database titles. Will be omitted when querying databases.
+   */
   dbPrefix?: string;
 }
 
+/**
+ * Query parameters. Same as Notions API query parameters but without `database_id` and `filter_properties`.
+ */
 export type NotionDBQueryParameters = Omit<QueryDatabaseParameters, 'database_id' | 'filter_properties'>
+/**
+ * Adds the content of a page to the type of the object.
+ */
 export type TypeWithContent<T, C extends string> = T & Record<C, NotionPageContent>
 
+/**
+ * Create a Notion CMS Adapter client.
+ *
+ * @param options - Options for the client.
+ * @returns The client.
+ */
 export function createNotionDBClient<
   DBS extends DBSchemasType,
 >({ notionToken, dbPageId, dbSchemas, dbPrefix = 'db: ' }: NotionDBClientOptions<DBS>) {
@@ -165,6 +189,12 @@ export function createNotionDBClient<
 
   return {
 
+    /**
+     * Query a database.
+     *
+     * @param db The name of the database.
+     * @param params The query parameters.
+     */
     async query<T extends DBName>(db: T, params: NotionDBQueryParameters = {}): Promise<DBInfer<S[T]>[]> {
       return useDatabaseId(db, async (id) => {
         const response = await client.databases.query({
@@ -178,6 +208,12 @@ export function createNotionDBClient<
       });
     },
 
+    /**
+     * Query a page by Notion page ID.
+     *
+     * @param db The name of the database.
+     * @param id The ID of the page.
+     */
     async queryOneById<T extends DBName>(db: T, id: string): Promise<DBInfer<S[T]>> {
       const response = await client.pages.retrieve({
         page_id: id
@@ -185,9 +221,18 @@ export function createNotionDBClient<
       if (!isFullPage(response)) {
         throw Error('Not a full page');
       }
+      const dbId = await getDatabaseId((db as string));
+      if (response.parent.type !== 'database_id' || response.parent.database_id !== dbId) {
+        throw Error('Page not found in database');
+      }
       return processRow(response, dbSchemas[db]);
     },
 
+    /**
+     * Query content of a page by Notion page ID.
+     *
+     * @param id The ID of the page.
+     */
     async queryPageContentById(id: string): Promise<NotionPageContent> {
       const blockResponse = await client.blocks.children.list({
         block_id: id
@@ -195,6 +240,13 @@ export function createNotionDBClient<
       return blockResponse.results;
     },
 
+    /**
+     * Query a page and its content by Notion page ID.
+     *
+     * @param db The name of the database.
+     * @param id The unique ID of the page.
+     * @param contentProperty The property name to store the content.
+     */
     async queryOneWithContentById<T extends DBName, C extends string>(
       db: T,
       id: string,
@@ -209,6 +261,13 @@ export function createNotionDBClient<
       return Object.assign(properties, append);
     },
 
+    /**
+     * Query a page and its content by unique ID.
+     *
+     * @param db The name of the database.
+     * @param unique_id The unique ID of the page.
+     * @param contentProperty The property name to store the content.
+     */
     async queryOneWithContentByUniqueId<T extends DBName, C extends string>(
       db: T,
       unique_id: number,
@@ -243,6 +302,13 @@ export function createNotionDBClient<
       });
     },
 
+    /**
+     * Convert the content of a database into a key-value pair using designated key and value fields.
+     *
+     * @param db The name of the database.
+     * @param keyProp The name of the key field.
+     * @param valueProp The name of the value field.
+     */
     async queryKV<
       T extends DBName,
       DB extends DBInfer<S[T]>,
@@ -261,6 +327,12 @@ export function createNotionDBClient<
       });
     },
 
+    /**
+     * Query the content of a page by title. If title is not unique, the first page found will be returned.
+     *
+     * @param db The name of the database.
+     * @param title The title of the page.
+     */
     async queryText<T extends DBName>(db: T, title: string): Promise<NotionPageContent> {
       return useDatabaseId(db, async (id) => {
         const titleProp = Object.entries(dbSchemas[db]).find(([_, type]) => type !== '__id' && type.type === 'title')![0];
@@ -284,6 +356,12 @@ export function createNotionDBClient<
       });
     },
 
+    /**
+     * Insert an entry into a database.
+     *
+     * @param db The name of the database.
+     * @param data The data to insert.
+     */
     async insertEntry<T extends DBName>(db: T, data: DBMutateInfer<S[T]>): Promise<DBInfer<S[T]>> {
       return useDatabaseId(db, async (id) => {
         const result = await client.pages.create({
@@ -299,6 +377,13 @@ export function createNotionDBClient<
       });
     },
 
+    /**
+     * Update an entry in a database. Will throw an error if the page is not found in the database.
+     *
+     * @param db The name of the database.
+     * @param id The ID of the page.
+     * @param data The data to update.
+     */
     async updateEntry<T extends DBName>(db: T, id: string, data: DBMutateInfer<S[T]>): Promise<DBInfer<S[T]>> {
       await assertPageInDatabase(db, id);
       const result = await client.pages.update({
@@ -311,6 +396,12 @@ export function createNotionDBClient<
       return processRow(result, dbSchemas[db]);
     },
 
+    /**
+     * Delete an entry in a database. Will throw an error if the page is not found in the database.
+     *
+     * @param db The name of the database.
+     * @param id The ID of the page.
+     */
     async deleteEntry(db: DBName, id: string): Promise<void> {
       await assertPageInDatabase(db, id);
       await client.pages.update({

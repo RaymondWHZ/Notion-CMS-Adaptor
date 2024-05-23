@@ -273,6 +273,24 @@ export function createNotionDBClient<
     },
 
     /**
+     * Query a page by unique ID.
+     *
+     * @param db The name of the database.
+     * @param unique_id The unique ID of the page.
+     */
+    async queryOneByUniqueId<T extends DBName>(db: T, unique_id: number): Promise<DBInfer<S[T]> | undefined> {
+      const uniqueIdProp = Object.entries(dbSchemas[db]).find(([_, type]) => type !== '__id' && type.type === 'unique_id')![0];
+      return this.queryFirst(db, {
+        filter: {
+          property: uniqueIdProp,
+          unique_id: {
+            equals: unique_id
+          }
+        }
+      });
+    },
+
+    /**
      * Query a page and its content by unique ID.
      *
      * @param db The name of the database.

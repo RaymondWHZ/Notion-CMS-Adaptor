@@ -532,6 +532,7 @@ export function rich_text() {
 }
 
 export type RollupArrayType = Extract<ValueType<'rollup'>, { type: 'array' }>['array']
+export type RollupArrayItemType = RollupArrayType[number]
 const rollupOptions = {
   ...makeDefaultOptions('rollup'),
   /**
@@ -563,7 +564,22 @@ const rollupOptions = {
     });
   },
   /**
+   * If the value is an array, handle the first item using a custom handler, ignoring the rest; otherwise throw an error. Does not support mutation.
+   *
+   * @param handler The custom handler
+   */
+  handleSingleUsing<R>(handler: (value: RollupArrayItemType | undefined) => R) {
+    return this.handleUsing(value => {
+      if (value.type === 'array') {
+        return handler(value.array[0]);
+      }
+      throw Error('Invalid rollup type');
+    });
+  },
+  /**
    * If the value is an array, handle the array using a custom handler; otherwise throw an error. Does not support mutation.
+   *
+   * @param handler The custom handler
    */
   handleArrayUsing<R>(handler: (value: RollupArrayType) => R) {
     return this.handleUsing(value => {

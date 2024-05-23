@@ -209,6 +209,17 @@ export function createNotionDBClient<
     },
 
     /**
+     * Query a database and return the first result only.
+     *
+     * @param db The name of the database.
+     * @param params The query parameters.
+     */
+    async queryFirst<T extends DBName>(db: T, params: NotionDBQueryParameters = {}): Promise<DBInfer<S[T]> | undefined> {
+      const results = await this.query(db, params);
+      return results[0];
+    },
+
+    /**
      * Query a page by Notion page ID.
      *
      * @param db The name of the database.

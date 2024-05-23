@@ -11,7 +11,7 @@ import type {
   DBSchemaValueDefinition, NotionPageContent,
   NotionPropertyTypeEnum, NotionMutationProperties, ValueComposer,
   ValueHandler,
-  ValueType, NotionMutablePropertyTypeEnum, KeysWithValueType
+  ValueType, NotionMutablePropertyTypeEnum, KeysWithValueType, DBNamesWithPropertyType
 } from "./types";
 
 function isAllFullPage(results: Array<PageObjectResponse | PartialPageObjectResponse | DatabaseObjectResponse | PartialDatabaseObjectResponse>): results is Array<PageObjectResponse> {
@@ -278,7 +278,7 @@ export function createNotionDBClient<
      * @param db The name of the database.
      * @param unique_id The unique ID of the page.
      */
-    async queryOneByUniqueId<T extends DBName>(db: T, unique_id: number): Promise<DBInfer<S[T]> | undefined> {
+    async queryOneByUniqueId<T extends DBNamesWithPropertyType<S, 'unique_id'>>(db: T, unique_id: number): Promise<DBInfer<S[T]> | undefined> {
       const uniqueIdProp = Object.entries(dbSchemas[db]).find(([_, type]) => type !== '__id' && type.type === 'unique_id')![0];
       return this.queryFirst(db, {
         filter: {
@@ -297,7 +297,7 @@ export function createNotionDBClient<
      * @param unique_id The unique ID of the page.
      * @param contentProperty The property name to store the content.
      */
-    async queryOneWithContentByUniqueId<T extends DBName, C extends string>(
+    async queryOneWithContentByUniqueId<T extends DBNamesWithPropertyType<S, 'unique_id'>, C extends string>(
       db: T,
       unique_id: number,
       contentProperty: C
@@ -363,7 +363,7 @@ export function createNotionDBClient<
      * @param db The name of the database.
      * @param title The title of the page.
      */
-    async queryText<T extends DBName>(db: T, title: string): Promise<NotionPageContent> {
+    async queryText<T extends DBNamesWithPropertyType<S, 'title'>>(db: T, title: string): Promise<NotionPageContent> {
       return useDatabaseId(db, async (id) => {
         const titleProp = Object.entries(dbSchemas[db]).find(([_, type]) => type !== '__id' && type.type === 'title')![0];
         const response = await client.databases.query({

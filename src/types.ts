@@ -143,6 +143,9 @@ export type DBInfer<T extends DBSchemaType> = {
 export type DBObjectTypesInfer<DBS extends DBSchemasType> = {
   [K in keyof DBS]: DBInfer<DBS[K]>
 }
+export type DBNamesWithPropertyType<T extends DBSchemasType, P extends NotionPropertyTypeEnum> = {
+  [K in keyof T]: KeysWithValueType<T[K], NotionPropertyDefinition<P>> extends never ? never : K
+}[keyof T];
 
 /**
  * Infer the type of value to be accepted by the composer of a mutable Notion property.

@@ -2,7 +2,7 @@ import {
   createDBSchemas,
   createNotionDBClient, status,
   DBObjectTypesInfer, rich_text, title,
-  multi_select, __id, files, formula, rollup
+  multi_select, __id, files, formula, rollup, unique_id
 } from "../src";
 import { expectType } from "./utils";
 
@@ -31,6 +31,9 @@ const dbSchemas  = createDBSchemas({
     name: title().plainText(),
     description: rich_text().plainText(),
   },
+  users: {
+    id: unique_id().number(),
+  }
 });
 
 type DBObjectTypes = DBObjectTypesInfer<typeof dbSchemas>
@@ -56,6 +59,14 @@ expectType<Promise<Project[]>>(client.query('projects', {
     }
   }
 }))
+
+void client.queryOneByUniqueId('users', 123)
+// @ts-expect-error
+void client.queryOneByUniqueId('projects', 123)
+
+void client.queryText('projects', '123')
+// @ts-expect-error
+void client.queryText('users', '123')
 
 type KV = {
   name1: string[]

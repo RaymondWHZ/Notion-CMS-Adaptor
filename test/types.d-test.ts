@@ -4,7 +4,7 @@ import {
   NotionMutablePropertyDefinition,
   NotionMutablePropertyTypeEnum,
   NotionPropertyDefinition,
-  NotionPropertyDefinitionEnum, PropertyInfer, MutateInfer, KeysWithValueType
+  NotionPropertyDefinitionEnum, PropertyInfer, MutateInfer, KeysWithValueType, DBNamesWithPropertyType
 } from "../src";
 
 expect<typesAssignable<NotionMutablePropertyTypeEnum, 'number' | 'rich_text' | 'title' | 'files'>>()
@@ -26,7 +26,7 @@ expect<typesEqual<string, PropertyInfer<{
   type: 'title',
   handler: () => string
 }>>>()
-type DB = DBInfer<{
+type Schema = {
   a: {
     type: 'title',
     handler: () => string,
@@ -36,10 +36,11 @@ type DB = DBInfer<{
     handler: () => number,
   },
   c: {
-    type: 'title',
+    type: 'rich_text',
     handler: () => string,
   },
-}>
+}
+type DB = DBInfer<Schema>
 type S = KeysWithValueType<DB, string>
 expect<typesEqual<'a' | "c", S>>()
 
@@ -52,3 +53,24 @@ expect<typesEqual<never, MutateInfer<{
   type: 'title',
   handler: () => string
 }>>>()
+
+type Schema2 = {
+  a: {
+    type: 'unique_id',
+    handler: () => string,
+  },
+  b: {
+    type: 'number',
+    handler: () => number,
+  },
+  c: {
+    type: 'rich_text',
+    handler: () => string,
+  },
+}
+type DBSchemas = {
+  db1: Schema,
+  db2: Schema2,
+}
+expect<typesEqual<'db1', DBNamesWithPropertyType<DBSchemas, 'title'>>>()
+expect<typesEqual<'db2', DBNamesWithPropertyType<DBSchemas, 'unique_id'>>>()

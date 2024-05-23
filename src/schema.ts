@@ -188,7 +188,16 @@ export type DateRange = {
 const dateOptions = {
   ...makeMutableDefaultOptions('date'),
   /**
-   * Get the start date of the date range. Supports mutation.
+   * Get the start date of the date range, defaults to empty string. Supports mutation.
+   */
+  startDate() {
+    return this.handleAndComposeUsing({
+      handler: value => value?.start ?? '',
+      composer: value => ({ start: value })
+    })
+  },
+  /**
+   * Get the date range. Supports mutation.
    */
   dateRange() {
     return this.handleAndComposeUsing<DateRange>({

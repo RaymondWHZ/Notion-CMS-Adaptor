@@ -57,6 +57,14 @@ expectType<Promise<Project[]>>(client.query('projects', {
   }
 }))
 
+type KV = {
+  name1: string[]
+  name2: string[]
+}
+expectType<Promise<KV>>(client.queryKV('projects', '_id', 'images'))
+// @ts-expect-error
+void client.queryKV('projects', 'description', 'images')
+
 expectType<Promise<Project>>(client.insertEntry('projects', {
   status: 'in-progress'
 }))

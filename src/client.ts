@@ -11,7 +11,7 @@ import type {
   DBSchemaValueDefinition, NotionPageContent,
   NotionPropertyTypeEnum, NotionMutationProperties, ValueComposer,
   ValueHandler,
-  ValueType, NotionMutablePropertyTypeEnum
+  ValueType, NotionMutablePropertyTypeEnum, KeysWithValueType
 } from "./types";
 
 function isAllFullPage(results: Array<PageObjectResponse | PartialPageObjectResponse | DatabaseObjectResponse | PartialDatabaseObjectResponse>): results is Array<PageObjectResponse> {
@@ -312,9 +312,10 @@ export function createNotionDBClient<
     async queryKV<
       T extends DBName,
       DB extends DBInfer<S[T]>,
-      F extends keyof DB,
-      G extends keyof DB
-    >(db: T, keyProp: F, valueProp: G): Promise<Record<string, DB[G]>> {
+      F extends KeysWithValueType<DB, string>,
+      G extends keyof DB,
+      R extends Record<string, DB[G]>
+    >(db: T, keyProp: F, valueProp: G): Promise<R> {
       return useDatabaseId(db, async (id) => {
         const response = await client.databases.query({
           database_id: id,
@@ -323,7 +324,7 @@ export function createNotionDBClient<
           throw Error('Not all results are full page');
         }
         const processedResults = processRows(response.results, dbSchemas[db]);
-        return processKVResults(processedResults, keyProp as string, valueProp as string);
+        return processKVResults(processedResults, keyProp as string, valueProp as string) as R;
       });
     },
 

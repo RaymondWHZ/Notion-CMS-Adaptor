@@ -5,6 +5,16 @@ import type {
 } from "@notionhq/client/build/src/api-endpoints";
 
 /**
+ * Infer the type of key that has a specific value type in a record.
+ *
+ * @typeParam T - The type of record.
+ * @typeParam U - The type of value to be found.
+ */
+export type KeysWithValueType<T extends Record<string, any>, U> = {
+  [K in keyof T]: T[K] extends U ? K : never
+}[keyof T];
+
+/**
  * Content of a Notion page. Same as Array<PartialBlockObjectResponse | BlockObjectResponse>.
  */
 export type NotionPageContent = Array<PartialBlockObjectResponse | BlockObjectResponse>;

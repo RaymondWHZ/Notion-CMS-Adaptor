@@ -89,23 +89,121 @@ function createMutateData<T extends DBSchemaType>(
   return transformedData;
 }
 
-export interface NotionDBClientOptions<DBS extends DBSchemasType> {
+type NotionTokenOptions = {
   /**
    * The token for the Notion API client.
    */
   notionToken: string;
+}
+type NotionClientOptions = {
+  /**
+   * The Notion API client. Make sure the version is set to '2022-06-28'.
+   */
+  notionClient: Client;
+}
+type SchemasOptions<DBS extends DBSchemasType> = {
+  /**
+   * The schemas of all databases.
+   */
+  dbSchemas: DBS;
+}
+type DBPageOptions = {
   /**
    * The ID of the page containing all databases.
    */
   dbPageId: string;
   /**
-   * The schemas of all databases.
-   */
-  dbSchemas: DBS;
-  /**
    * The prefix of the database titles. Will be omitted when querying databases.
    */
   dbPrefix?: string;
+}
+type DBMapOptions = {
+  /**
+   * The map of database names to their IDs. If provided, the client will not query the page for database IDs.
+   */
+  dbMap: Record<string, string>;
+}
+
+/**
+ * Options for the Notion CMS Adapter client.
+ *
+ * @typeParam DBS - The type of schemas for multiple Notion databases.
+ */
+export type NotionDBClientOptions<DBS extends DBSchemasType> =
+  (NotionTokenOptions | NotionClientOptions) & SchemasOptions<DBS> & (DBPageOptions | DBMapOptions)
+
+function createClient<
+  DBS extends DBSchemasType
+>(options: NotionDBClientOptions<DBS>) {
+  if ('notionClient' in options) {
+    return options.notionClient;
+  } else if ('notionToken' in options) {
+    return new Client({
+      auth: options.notionToken,
+      notionVersion: '2022-06-28'
+    });
+  } else {
+    throw Error('At least one of notionToken or notionClient must be provided');
+  }
+}
+
+const DEFAULT_DB_PREFIX = 'db: ';
+
+function createUseDatabaseFunction<
+  DBS extends DBSchemasType
+>(options: NotionDBClientOptions<DBS>, client: Client) {
+  type DBName = keyof DBS;
+  if ('dbMap' in options) {
+    return async <R>(name: DBName, callback: (id: string) => Promise<R>): Promise<R> => {
+      const rawName = (name as string).split('__')[0];
+      if (!(rawName in options.dbMap)) {
+        throw Error('Database not found');
+      }
+      const id = options.dbMap[rawName];
+      return await callback(id);
+    }
+  } else if ('dbPageId' in options) {
+    const { dbPageId, dbPrefix = DEFAULT_DB_PREFIX } = options;
+    const databaseIdMap = new Map<string, string>();
+
+    const fillDatabaseIdMap = async () => {
+      const databases = await client.blocks.children.list({
+        block_id: dbPageId
+      });
+      for (const database of databases.results) {
+        if ('type' in database && database.type === 'child_database') {
+          const title = database.child_database.title;
+          if (title.startsWith(dbPrefix)) {
+            databaseIdMap.set(title.slice(dbPrefix.length), database.id);
+          }
+        }
+      }
+    }
+
+    const getDatabaseId = async (rawName: string) => {
+      if (!databaseIdMap.has(rawName)) {
+        await fillDatabaseIdMap();
+      }
+      const id = databaseIdMap.get(rawName);
+      if (!id) {
+        throw Error('Database not found');
+      }
+      return id;
+    }
+
+    return async <R>(name: DBName, callback: (id: string) => Promise<R>): Promise<R> => {
+      try {
+        const rawName = (name as string).split('__')[0];
+        const id = await getDatabaseId(rawName);
+        return await callback(id);
+      } catch (e) {
+        databaseIdMap.clear();
+        throw e;
+      }
+    }
+  } else {
+    throw Error('At least one of dbMap or dbPageId must be provided');
+  }
 }
 
 /**
@@ -125,53 +223,14 @@ export type TypeWithContent<T, C extends string> = T & Record<C, NotionPageConte
  */
 export function createNotionDBClient<
   DBS extends DBSchemasType,
->({ notionToken, dbPageId, dbSchemas, dbPrefix = 'db: ' }: NotionDBClientOptions<DBS>) {
+>(options: NotionDBClientOptions<DBS>) {
+  const { dbSchemas } = options;
 
   type DBName = keyof DBS;
   type S = typeof dbSchemas;
 
-  const client = new Client({
-    auth: notionToken,
-    notionVersion: '2022-06-28'
-  });
-
-  const databaseIdMap = new Map<string, string>();
-
-  async function fillDatabaseIdMap() {
-    const databases = await client.blocks.children.list({
-      block_id: dbPageId
-    });
-    for (const database of databases.results) {
-      if ('type' in database && database.type === 'child_database') {
-        const title = database.child_database.title;
-        if (title.startsWith(dbPrefix)) {
-          databaseIdMap.set(title.slice(dbPrefix.length), database.id);
-        }
-      }
-    }
-  }
-
-  function clearDatabaseIdMap() {
-    databaseIdMap.clear();
-  }
-
-  async function getDatabaseId(rawName: string) {
-    if (!databaseIdMap.has(rawName)) {
-      await fillDatabaseIdMap();
-    }
-    return databaseIdMap.get(rawName) ?? '';
-  }
-
-  async function useDatabaseId<R>(name: DBName, callback: (id: string) => Promise<R>): Promise<R> {
-    try {
-      const rawName = (name as string).split('__')[0];
-      const id = await getDatabaseId(rawName);
-      return await callback(id);
-    } catch (e) {
-      clearDatabaseIdMap();
-      throw e;
-    }
-  }
+  const client = createClient(options);
+  const useDatabaseId = createUseDatabaseFunction(options, client);
 
   async function assertPageInDatabase(db: DBName, pageId: string) {
     await useDatabaseId(db, async (id) => {
@@ -226,17 +285,18 @@ export function createNotionDBClient<
      * @param id The ID of the page.
      */
     async queryOneById<T extends DBName>(db: T, id: string): Promise<DBInfer<S[T]>> {
-      const response = await client.pages.retrieve({
-        page_id: id
+      return useDatabaseId(db, async (dbId) => {
+        const response = await client.pages.retrieve({
+          page_id: id
+        });
+        if (!isFullPage(response)) {
+          throw Error('Not a full page');
+        }
+        if (response.parent.type !== 'database_id' || response.parent.database_id !== dbId) {
+          throw Error('Page not found in database');
+        }
+        return processRow(response, dbSchemas[db]);
       });
-      if (!isFullPage(response)) {
-        throw Error('Not a full page');
-      }
-      const dbId = await getDatabaseId((db as string));
-      if (response.parent.type !== 'database_id' || response.parent.database_id !== dbId) {
-        throw Error('Page not found in database');
-      }
-      return processRow(response, dbSchemas[db]);
     },
 
     /**

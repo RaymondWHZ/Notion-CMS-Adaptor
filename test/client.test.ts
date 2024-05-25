@@ -1,6 +1,7 @@
-import { expect, test, mock } from "bun:test";
+import { expect, test, spyOn } from "bun:test";
 import { Client } from "@notionhq/client";
 import { __id, createDBSchemas, createNotionDBClient, multi_select } from "../src";
+import {PageObjectResponse, QueryDatabaseResponse} from "@notionhq/client/build/src/api-endpoints";
 
 const TEST_DB_ID = '0000';
 const TEST_PAGE_ID = '0001';
@@ -24,22 +25,9 @@ const dbSchema = createDBSchemas({
     tags: multi_select().stringEnums('personal', 'work', 'backlog'),
   },
 })
-const mockClient = {
-  databases: {
-    query: mock(async () => {
-      return {
-        results: [TEST_PAGE_RESPONSE]
-      }
-    }),
-  },
-  pages: {
-    create: mock(async () => {
-      return TEST_PAGE_RESPONSE;
-    }),
-  }
-} as unknown as Client;
+const notionClient = new Client();
 const client = createNotionDBClient({
-  notionClient: mockClient,
+  notionClient,
   dbSchemas: dbSchema,
   dbMap: {
     projects: TEST_DB_ID
@@ -47,8 +35,13 @@ const client = createNotionDBClient({
 });
 
 test("query", async () => {
-  // @ts-expect-error
-  mockClient.databases.query.mockClear()
+  const query = spyOn(notionClient.databases, 'query')
+  query.mockImplementation(async () => {
+    return {
+      results: [TEST_PAGE_RESPONSE]
+    } as unknown as QueryDatabaseResponse
+  })
+
   const res = await client.query('projects', {
     filter: {
       property: 'tags',
@@ -57,8 +50,8 @@ test("query", async () => {
       }
     }
   })
-  expect(mockClient.databases.query).toBeCalledTimes(1)
-  expect(mockClient.databases.query).toBeCalledWith({
+  expect(notionClient.databases.query).toBeCalledTimes(1)
+  expect(notionClient.databases.query).toBeCalledWith({
     database_id: TEST_DB_ID,
     filter: {
       property: 'tags',
@@ -71,16 +64,21 @@ test("query", async () => {
   expect(res).toBeArrayOfSize(1)
   expect(res[0]._id).toBe(TEST_PAGE_ID)
   expect(res[0].tags).toContain('personal')
+
+  query.mockRestore()
 });
 
 test("insert", async () => {
-  // @ts-expect-error
-  mockClient.pages.create.mockClear()
+  const create = spyOn(notionClient.pages, 'create')
+  create.mockImplementation(async () => {
+    return TEST_PAGE_RESPONSE as unknown as PageObjectResponse
+  })
+
   const res = await client.insertEntry('projects', {
     tags: ['personal']
   });
-  expect(mockClient.pages.create).toBeCalledTimes(1)
-  expect(mockClient.pages.create).toBeCalledWith({
+  expect(notionClient.pages.create).toBeCalledTimes(1)
+  expect(notionClient.pages.create).toBeCalledWith({
     parent: {
       database_id: TEST_DB_ID
     },
@@ -92,4 +90,6 @@ test("insert", async () => {
   })
   expect(res._id).toBe(TEST_PAGE_ID)
   expect(res.tags).toContain('personal')
+
+  create.mockRestore()
 });

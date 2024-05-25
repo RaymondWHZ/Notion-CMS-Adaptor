@@ -123,17 +123,27 @@ It is rare that a CMS system require only one collection, so Notion CMS Adaptor 
 
 You only need to provide the framework with the ID of the page that contains all your databases **on top level**, with each database having a name starting with “db: ” (the prefix can be configured). Then, you can reference each database by their name without the prefix when using other functions.
 
-In the example, the database in notion in fact has the name “db: projects”. It can be referenced as “projects” in subsequent usages of the framework.
+In the basic usage example, the database in notion in fact has the name “db: projects” and resides on the top level of the page “Project CMS” as follow:
+
+<img width="593" alt="Project Database Example" src="https://github.com/RaymondWHZ/Notion-CMS-Adaptor/assets/30245379/aaa1c46f-391a-44c1-9de9-e9dfefa00b40">
+
+Then, supply the page ID of Project CMS to Notion CMS Adaptor so that the database can be referenced as “projects” in subsequent usages of the framework.
 
 # Client Functions
 
-- `query`: simply query a database, optionally accept query parameters to be sent to Notion API, return a list of  converted objects
-- `queryOneWithContent`: query one page using its ID, put the content of the page into a designated field, useful in many blog article scenarios
-- `queryKV`: convert the content of a database into a key-value pair using designated key and value fields, useful in cases where you want to store some metadata
-- `queryText`: query contents of a page in a database using its title, useful in cases where you want to conveniently store some rich texts
-- `insertEntry`: insert a new page into a database, can only specify properties that are mutable
-- `updateEntry`: update a page in a database with its ID, can only specify properties that are mutable (safe-guards that the page is in the database)
-- `deleteEntry`: delete a page in a database with its ID (safe-guards that the page is in the database)
+- Queries
+  - `query`: simply query a database, optionally accept query parameters to be sent to Notion API, return a list of converted objects
+  - `queryFirst`: same as `query` except that it returns only the first result as a single object instead of a list
+  - `queryOneById`: query one page using its ID
+  - `queryOneWithContentById`: same as `queryOneById` but also puts the content of the page into a designated field, useful in many blog article scenarios
+  - `queryOneByUniqueId`: query one page using its unique ID property, requiring that the database schema contains a unique ID property
+  - `queryOneWithContentByUniqueId`: same as `queryOneByUniqueId` but also puts the content of the page into a designated field, useful in many blog article scenarios
+  - `queryKV`: convert the content of a database into a key-value pair using designated key and value fields, useful in cases where you want to store some metadata
+  - `queryText`: query contents of a page in a database using its title, useful in cases where you want to conveniently store some rich texts
+- Mutations (requires the Notion integration to have write capability)
+  - `insertEntry`: insert a new page into a database, can only specify properties that are mutable
+  - `updateEntry`: update a page in a database with its ID, can only specify properties that are mutable (safe-guards that the page is in the database)
+  - `deleteEntry`: delete a page in a database with its ID (safe-guards that the page is in the database)
 
 # Supported schema types and conversions
 

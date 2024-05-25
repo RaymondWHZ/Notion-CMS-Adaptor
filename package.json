@@ -6,7 +6,7 @@
   "version": "1.2.0",
   "scripts": {
     "build": "tsc",
-    "test": "tsc --project tsconfig.test.json"
+    "test": "tsc --project tsconfig.test.json && bun test"
   },
   "files": [
     "build"

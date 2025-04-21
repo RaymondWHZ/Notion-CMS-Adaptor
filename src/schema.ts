@@ -1,10 +1,13 @@
 import type {
   DBSchemasType,
-  NotionPropertyDefinition,
-  NotionMutablePropertyDefinition,
-  NotionPropertyTypeEnum,
+  AdapterPropertyDefinition,
+  AdapterMutablePropertyDefinition,
   ValueHandler,
-  ValueType, ValueComposer, NotionMutablePropertyTypeEnum, MutateValueType
+  ValueType, ValueComposer, MutateValueType,
+  AdapterPropertyTypeEnum,
+  AdapterMutablePropertyTypeEnum,
+  NotionPageMetadataKeys,
+  NotionMutablePageMetadataKeys
 } from "./types";
 import type {RichTextItemResponse} from "@notionhq/client/build/src/api-endpoints";
 
@@ -40,23 +43,29 @@ export function convertNotionImage(pageId: string, preSignedUrl: string) {
     '&table=block';
 }
 
-const makeDefaultOptions = <T extends NotionPropertyTypeEnum>(type: T) => {
-  const valueToRaw: NotionPropertyDefinition<T, ValueType<T>> = {
+const makeDefaultOptions = <T extends AdapterPropertyTypeEnum>(type: T) => {
+  const valueToRaw: AdapterPropertyDefinition<T, ValueType<T>> = {
     type,
     handler: value => value
   };
   return {
     /**
-     * Directly return the raw value. Does not support mutation.
+     * Expand the default options, so that the object itself can be used as a definition.
      */
-    raw(): NotionPropertyDefinition<T, ValueType<T>> {
+    ...valueToRaw,
+    /**
+     * Directly return the raw value. Does not support mutation.
+     * 
+     * It is now the same as simply omitting this raw() method call.
+     */
+    raw(): AdapterPropertyDefinition<T, ValueType<T>> {
       return valueToRaw;
     },
     /**
      * Directly return the raw value with a default value if the value is null or undefined. Does not support mutation.
      * @param defaultValue The default value
      */
-    rawWithDefault(defaultValue: NonNullable<ValueType<T>>): NotionPropertyDefinition<T, NonNullable<ValueType<T>>> {
+    rawWithDefault(defaultValue: NonNullable<ValueType<T>>): AdapterPropertyDefinition<T, NonNullable<ValueType<T>>> {
       return {
         type,
         handler: value => value ?? defaultValue,
@@ -66,7 +75,7 @@ const makeDefaultOptions = <T extends NotionPropertyTypeEnum>(type: T) => {
      * Handle the value using a custom handler. Does not support mutation.
      * @param handler The custom handler
      */
-    handleUsing<R>(handler: ValueHandler<T, R>): NotionPropertyDefinition<T, R> {
+    handleUsing<R>(handler: ValueHandler<T, R>): AdapterPropertyDefinition<T, R> {
       return {
         type,
         handler
@@ -75,24 +84,30 @@ const makeDefaultOptions = <T extends NotionPropertyTypeEnum>(type: T) => {
   }
 }
 
-const makeMutableDefaultOptions = <T extends NotionMutablePropertyTypeEnum>(type: T) => {
-  const valueToRaw: NotionMutablePropertyDefinition<T, ValueType<T>, MutateValueType<T>> = {
+const makeMutableDefaultOptions = <T extends AdapterMutablePropertyTypeEnum>(type: T) => {
+  const valueToRaw: AdapterMutablePropertyDefinition<T, ValueType<T>, MutateValueType<T>> = {
     type,
     handler: value => value,
     composer: value => value
   }
   return {
     /**
-     * Directly return the raw value. Supports mutation.
+     * Expand the default options, so that the object itself can be used as a definition.
      */
-    raw(): NotionMutablePropertyDefinition<T, ValueType<T>, MutateValueType<T>> {
+    ...valueToRaw,
+    /**
+     * Directly return the raw value. Supports mutation.
+     * 
+     * It is now the same as simply omitting this raw() method call.
+     */
+    raw(): AdapterMutablePropertyDefinition<T, ValueType<T>, MutateValueType<T>> {
       return valueToRaw;
     },
     /**
      * Directly return the raw value with a default value if the value is null or undefined. Supports mutation.
      * @param defaultValue The default value
      */
-    rawWithDefault(defaultValue: NonNullable<ValueType<T>>): NotionMutablePropertyDefinition<T, NonNullable<ValueType<T>>, MutateValueType<T>> {
+    rawWithDefault(defaultValue: NonNullable<ValueType<T>>): AdapterMutablePropertyDefinition<T, NonNullable<ValueType<T>>, MutateValueType<T>> {
       return {
         type,
         handler: value => value ?? defaultValue,
@@ -103,7 +118,7 @@ const makeMutableDefaultOptions = <T extends NotionMutablePropertyTypeEnum>(type
      * Handle the value using a custom handler. Supports mutation using the raw underlying value.
      * @param handler The custom handler
      */
-    handleUsing<R>(handler: ValueHandler<T, R>): NotionMutablePropertyDefinition<T, R, MutateValueType<T>> {
+    handleUsing<R>(handler: ValueHandler<T, R>): AdapterMutablePropertyDefinition<T, R, MutateValueType<T>> {
       return {
         type,
         handler,
@@ -115,7 +130,7 @@ const makeMutableDefaultOptions = <T extends NotionMutablePropertyTypeEnum>(type
      * @param handler The custom handler
      * @param composer The custom composer
      */
-    handleAndComposeUsing<R, I = R>({ handler, composer }: { handler: ValueHandler<T, R>, composer: ValueComposer<T, I> }): NotionMutablePropertyDefinition<T, R, I> {
+    handleAndComposeUsing<R, I = R>({ handler, composer }: { handler: ValueHandler<T, R>, composer: ValueComposer<T, I> }): AdapterMutablePropertyDefinition<T, R, I> {
       return {
         type,
         handler,
@@ -126,10 +141,31 @@ const makeMutableDefaultOptions = <T extends NotionMutablePropertyTypeEnum>(type
 }
 
 /**
- * Special definition that represents the id of the page.
+ * Reference a metadata key.
+ */
+export function metadata<T extends NotionPageMetadataKeys>(key: T) {
+  return makeDefaultOptions(`__${key}`);
+}
+
+/**
+ * Reference a mutable metadata key.
+ */
+export function mutableMetadata<T extends NotionMutablePageMetadataKeys>(key: T) {
+  return makeMutableDefaultOptions(`__${key}`);
+}
+
+const __idOptions = {
+  ...makeDefaultOptions('__id'),
+};
+
+/**
+ * Reference the id metadata.
+ * 
+ * Deprecated. Use `metadata('id')` instead.
+ * @deprecated
  */
 export function __id() {
-  return '__id' as const;
+  return __idOptions;
 }
 
 const checkboxOptions = {
@@ -277,10 +313,10 @@ const filesOptions = {
    * This is not an official API and may break at any time. Use at your own risk.
    */
   notionImageUrls() {
-    return this.handleUsing((value, option, pageId) => value.reduce((acc, file) => {
+    return this.handleUsing((value, { id }) => value.reduce((acc, file) => {
       let result: string | undefined = undefined;
       if ('file' in file) {
-        result = convertNotionImage(pageId, file.file.url);
+        result = convertNotionImage(id, file.file.url);
       }
       if (result === undefined) {
         return acc;
@@ -294,13 +330,13 @@ const filesOptions = {
    * This is not an official API and may break at any time. Use at your own risk.
    */
   singleNotionImageUrl() {
-    return this.handleUsing((value, option, pageId) => {
+    return this.handleUsing((value, { id }) => {
       const file = value[0];
       if (!file) {
         return '';
       }
       if ('file' in file) {
-        return convertNotionImage(pageId, file.file.url);
+        return convertNotionImage(id, file.file.url);
       }
       return '';
     })

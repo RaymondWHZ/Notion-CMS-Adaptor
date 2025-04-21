@@ -1,6 +1,6 @@
 import { expect, test, spyOn } from "bun:test";
 import { Client } from "@notionhq/client";
-import { __id, createDBSchemas, createNotionDBClient, multi_select } from "../src";
+import { __id, createDBSchemas, createNotionDBClient, metadata, multi_select, mutableMetadata } from "../src";
 import {PageObjectResponse, QueryDatabaseResponse} from "@notionhq/client/build/src/api-endpoints";
 
 const TEST_DB_ID = '0000';
@@ -16,13 +16,15 @@ const TEST_PAGE_RESPONSE = {
         name: 'personal',
       }]
     }
-  }
+  },
+  in_trash: true,
 }
 
 const dbSchema = createDBSchemas({
   projects: {
     _id: __id(),
     tags: multi_select().stringEnums('personal', 'work', 'backlog'),
+    _in_trash: mutableMetadata("in_trash"),
   },
 })
 const notionClient = new Client();
@@ -64,6 +66,7 @@ test("query", async () => {
   expect(res).toBeArrayOfSize(1)
   expect(res[0]._id).toBe(TEST_PAGE_ID)
   expect(res[0].tags).toContain('personal')
+  expect(res[0]._in_trash).toBe(true)
 
   query.mockRestore()
 });
@@ -75,7 +78,8 @@ test("insert", async () => {
   })
 
   const res = await client.insertEntry('projects', {
-    tags: ['personal']
+    tags: ['personal'],
+    _in_trash: true
   });
   expect(notionClient.pages.create).toBeCalledTimes(1)
   expect(notionClient.pages.create).toBeCalledWith({
@@ -86,10 +90,12 @@ test("insert", async () => {
       tags: [{
         name: 'personal'
       }]
-    }
+    },
+    in_trash: true
   })
   expect(res._id).toBe(TEST_PAGE_ID)
   expect(res.tags).toContain('personal')
+  expect(res._in_trash).toBe(true)
 
   create.mockRestore()
 });

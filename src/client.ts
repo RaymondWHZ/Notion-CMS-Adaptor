@@ -1,7 +1,8 @@
 import type {
   DatabaseObjectResponse,
   PageObjectResponse, PartialDatabaseObjectResponse, PartialPageObjectResponse,
-  QueryDatabaseParameters
+  QueryDatabaseParameters,
+  UpdatePageParameters
 } from "@notionhq/client/build/src/api-endpoints";
 import {Client, isFullPage} from "@notionhq/client";
 import type {
@@ -9,13 +10,22 @@ import type {
   DBSchemasType,
   DBSchemaType,
   DBSchemaValueDefinition, NotionPageContent,
-  NotionPropertyTypeEnum, NotionMutationProperties, ValueComposer,
+  NotionMutationProperties, ValueComposer,
   ValueHandler,
-  ValueType, NotionMutablePropertyTypeEnum, KeysWithValueType, DBNamesWithPropertyType
+  ValueType, KeysWithValueType, DBNamesWithPropertyType,
+  AdapterPropertyTypeEnum,
+  NotionPageMetadataKeys,
+  NotionPageMetadataKeyEnum,
+  AdapterMutablePropertyTypeEnum,
+  NotionMutablePageMetadataKeys,
 } from "./types";
 
 function isAllFullPage(results: Array<PageObjectResponse | PartialPageObjectResponse | DatabaseObjectResponse | PartialDatabaseObjectResponse>): results is Array<PageObjectResponse> {
   return results.every(isFullPage);
+}
+
+function isMetadataType(type: AdapterPropertyTypeEnum): type is NotionPageMetadataKeyEnum {
+  return type.startsWith('__');
 }
 
 function processRow<T extends DBSchemaType>(
@@ -24,23 +34,27 @@ function processRow<T extends DBSchemaType>(
 ): DBInfer<T> {
   const transformedResult = {} as DBInfer<T>;
   for (const [key, def] of Object.entries(schema) as [keyof T, DBSchemaValueDefinition][]) {
-    if (def === '__id') {
-      transformedResult[key] = result.id as any;
-      continue;
+    const type: AdapterPropertyTypeEnum = def.type;
+    let value: ValueType<typeof type>;
+    if (isMetadataType(type)) {
+      // Get page metadata
+      const rawKey = type.slice(2) as NotionPageMetadataKeys;
+      value = result[rawKey];
+    } else {
+      // Get page property
+      const name = key.toString();
+      if (!(name in result.properties)) {
+        throw Error(`Property ${name} is not found`);
+      }
+      const property = result.properties[name];
+      if (property.type !== type) {
+        throw Error(`Property ${name} type mismatch: ${property.type} !== ${type}`);
+      }
+      // @ts-expect-error
+      value = property[type];
     }
-    const type: NotionPropertyTypeEnum = def.type;
-    const [name, option] = key.toString().split('__', 2);
-    if (!(name in result.properties)) {
-      throw Error(`Property ${name} is not found`);
-    }
-    const property = result.properties[name];
-    if (property.type !== type) {
-      throw Error(`Property ${name} type mismatch: ${property.type} !== ${type}`);
-    }
-    // @ts-ignore
-    const value: ValueType<typeof type> = property[type];
     const handler = def.handler as ValueHandler<typeof type>;
-    transformedResult[key] = handler(value, option ?? '', result.id);
+    transformedResult[key] = handler(value, result);
   }
   return transformedResult;
 }
@@ -68,25 +82,35 @@ function processKVResults<
   return result;
 }
 
+type MutateParameters = {
+  [K in NotionMutablePageMetadataKeys]: UpdatePageParameters[K];
+} & {
+  properties: NotionMutationProperties;
+};
+
 function createMutateData<T extends DBSchemaType>(
   data: DBMutateInfer<T>,
   schema: T
-): NotionMutationProperties {
-  const transformedData = {} as NotionMutationProperties;
+): MutateParameters {
+  const parameters = { properties: {} } as MutateParameters;
   for (const [key, value] of Object.entries(data) as [keyof T, any][]) {
     const def: DBSchemaValueDefinition = schema[key];
-    if (def === '__id') {
-      throw Error('Cannot mutate __id');
-    }
     if (!('composer' in def)) {
-      throw Error('Cannot mutate without composer');
+      throw Error(`Cannot mutate property '${String(key)}' of type '${def.type}': it has no composer`);
     }
-    const type: NotionMutablePropertyTypeEnum = def.type;
-    const [name] = key.toString().split('__', 1);
-    const composer = def.composer as ValueComposer<typeof type>;
-    transformedData[name] = composer(value);
+    const type: AdapterMutablePropertyTypeEnum = def.type;
+    if (isMetadataType(type)) {
+      const key = type.slice(2) as NotionMutablePageMetadataKeys;
+      const composer = def.composer as ValueComposer<typeof type>;
+      // @ts-expect-error
+      parameters[key] = composer(value);
+    } else {
+      const name = key.toString();
+      const composer = def.composer as ValueComposer<typeof type>;
+      parameters.properties[name] = composer(value);
+    }
   }
-  return transformedData;
+  return parameters;
 }
 
 type NotionTokenOptions = {
@@ -339,7 +363,7 @@ export function createNotionDBClient<
      * @param unique_id The unique ID of the page.
      */
     async queryOneByUniqueId<T extends DBNamesWithPropertyType<S, 'unique_id'>>(db: T, unique_id: number): Promise<DBInfer<S[T]> | undefined> {
-      const uniqueIdProp = Object.entries(dbSchemas[db]).find(([_, type]) => type !== '__id' && type.type === 'unique_id')![0];
+      const uniqueIdProp = Object.entries(dbSchemas[db]).find(([_, type]) => type.type === 'unique_id')![0];
       return this.queryFirst(db, {
         filter: {
           property: uniqueIdProp,
@@ -363,7 +387,7 @@ export function createNotionDBClient<
       contentProperty: C
     ): Promise<TypeWithContent<DBInfer<S[T]>, C>> {
       return useDatabaseId(db, async (dbId) => {
-        const uniqueIdProp = Object.entries(dbSchemas[db]).find(([_, type]) => type !== '__id' && type.type === 'unique_id')![0];
+        const uniqueIdProp = Object.entries(dbSchemas[db]).find(([_, type]) => type.type === 'unique_id')![0];
         const response = await client.databases.query({
           database_id: dbId,
           filter: {
@@ -425,7 +449,7 @@ export function createNotionDBClient<
      */
     async queryText<T extends DBNamesWithPropertyType<S, 'title'>>(db: T, title: string): Promise<NotionPageContent> {
       return useDatabaseId(db, async (id) => {
-        const titleProp = Object.entries(dbSchemas[db]).find(([_, type]) => type !== '__id' && type.type === 'title')![0];
+        const titleProp = Object.entries(dbSchemas[db]).find(([_, type]) => type.type === 'title')![0];
         const response = await client.databases.query({
           database_id: id,
           filter: {
@@ -458,7 +482,7 @@ export function createNotionDBClient<
           parent: {
             database_id: id
           },
-          properties: createMutateData(data, dbSchemas[db])
+          ...createMutateData(data, dbSchemas[db])
         });
         if (!('properties' in result)) {
           throw Error('Not a full page');
@@ -478,7 +502,7 @@ export function createNotionDBClient<
       await assertPageInDatabase(db, id);
       const result = await client.pages.update({
         page_id: id,
-        properties: createMutateData(data, dbSchemas[db])
+        ...createMutateData(data, dbSchemas[db])
       });
       if (!('properties' in result)) {
         throw Error('Not a full page');

@@ -1,5 +1,6 @@
 import {
   __id,
+  metadata,
   createDBSchemas, DBMutateObjectTypesInfer,
   DBObjectTypesInfer,
   files,
@@ -18,7 +19,7 @@ const dbSchemas  = createDBSchemas({
     _id: __id(),
     tags: multi_select().stringEnums('personal', 'work', 'backlog'),
     name: title().plainText(),
-    description: rich_text().raw(),
+    description: rich_text(),
     cover: files().singleNotionImageUrl(),
     images: files().notionImageUrls(),
     status: status().stringEnum('in-progress', 'done'),
@@ -31,6 +32,7 @@ const dbSchemas  = createDBSchemas({
         return acc
       }, [] as string[])
     }),
+    _in_trash: metadata("in_trash"),
   },
   projects__overview: {  // Another view pointing to the same projects database
     _id: __id(),
@@ -53,6 +55,7 @@ expect<typesEqual<Project, {
   status: 'in-progress' | 'done'
   active_tasks: number
   task_status: string[]
+  _in_trash: boolean
 }>>()
 
 type ProjectOverview = DBObjectTypes['projects__overview']

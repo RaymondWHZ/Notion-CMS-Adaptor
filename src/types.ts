@@ -1,7 +1,8 @@
 import type {
   BlockObjectResponse, CreatePageParameters,
   PageObjectResponse,
-  PartialBlockObjectResponse
+  PartialBlockObjectResponse,
+  UpdatePageParameters
 } from "@notionhq/client/build/src/api-endpoints";
 
 /**
@@ -19,6 +20,14 @@ export type KeysWithValueType<T extends Record<string, any>, U> = {
  */
 export type NotionPageContent = Array<PartialBlockObjectResponse | BlockObjectResponse>;
 
+/**
+ * All possible metadata keys for a Notion page.
+ */
+export type NotionPageMetadataKeys = Exclude<keyof PageObjectResponse, 'properties' | 'object'>;
+/**
+ * All mutable metadata keys for create/update a Notion page.
+ */
+export type NotionMutablePageMetadataKeys = Exclude<keyof UpdatePageParameters, 'page_id' | 'properties' | 'archived'>;
 /**
  * Type of properties of a Notion page. Same as PageObjectResponse['properties'].
  */
@@ -46,33 +55,57 @@ export type NotionMutablePropertyTypeEnum =
   NonNullable<Extract<NotionMutationPropertyValues, { type?: NotionPropertyTypeEnum }>['type']>;
 
 /**
+ * Metadata key enum for Notion page.
+ */
+export type NotionPageMetadataKeyEnum = `__${NotionPageMetadataKeys}`;
+/**
+ * Mutable metadata key enum for Notion page.
+ */
+export type NotionMutablePageMetadataKeyEnum = `__${NotionMutablePageMetadataKeys}`;
+/**
+ * Revert the metadata key enum to the original key.
+ */
+export type RK<T extends NotionPageMetadataKeyEnum> = T extends `__${infer R}` ? R : never;
+
+/**
+ * Possible adapter types.
+ */
+export type AdapterPropertyTypeEnum = NotionPropertyTypeEnum | NotionPageMetadataKeyEnum;
+/**
+ * Possible mutable adapter types.
+ */
+export type AdapterMutablePropertyTypeEnum = NotionMutablePropertyTypeEnum | NotionMutablePageMetadataKeyEnum;
+
+/**
  * Infer the underlying value of a Notion property in response.
  *
  * @typeParam T - The type of Notion property.
  */
-export type ValueType<T extends NotionPropertyTypeEnum> =
-  Extract<NotionPropertyValues, { type: T }> extends { [K in T]: infer R } ? R : never;
+export type ValueType<T extends AdapterPropertyTypeEnum> =
+  T extends NotionPropertyTypeEnum ? (Extract<NotionPropertyValues, { type: T }> extends { [K in T]: infer R } ? R : never)
+    : T extends NotionPageMetadataKeyEnum ? PageObjectResponse[RK<T>] : never;
 /**
  * Handler for a Notion property type. It takes the value of the property and return the processed value.
  *
  * @typeParam T - The type of Notion property.
  * @typeParam R - The return type of the handler.
  */
-export type ValueHandler<T extends NotionPropertyTypeEnum, R = any> = (value: ValueType<T>, option: string, pageId: string) => R;
+export type ValueHandler<T extends AdapterPropertyTypeEnum, R = any> = (value: ValueType<T>, page: PageObjectResponse) => R;
 /**
  * Infer the type that can mutate a Notion property.
  *
  * @typeParam T - The type of Notion mutable property.
  */
-export type MutateValueType<T extends NotionMutablePropertyTypeEnum> =
-  Extract<NotionMutationPropertyValues, { type?: T }> extends { [K in T]: infer R } ? R : never;
+export type MutateValueType<T extends AdapterMutablePropertyTypeEnum> =
+  T extends NotionMutablePropertyTypeEnum ? (Extract<NotionMutationPropertyValues, { type?: T }> extends { [K in T]: infer R } ? R : never)
+    : T extends NotionMutablePageMetadataKeyEnum ? UpdatePageParameters[RK<T>] : never;
 /**
  * Composer for a Notion mutable property type. It takes the value of the property and return the processed value.
  *
  * @typeParam T - The type of Notion mutable property.
  * @typeParam I - The input type of the composer.
  */
-export type ValueComposer<T extends NotionMutablePropertyTypeEnum, I = any> = (value: I) => MutateValueType<T>
+export type ValueComposer<T extends AdapterMutablePropertyTypeEnum, I = any> = (value: I) => MutateValueType<T>
 
 /**
  * Type used to define a immutable Notion property in schema.
@@ -80,16 +113,16 @@ export type ValueComposer<T extends NotionMutablePropertyTypeEnum, I = any> = (v
  * @typeParam T - The type of Notion property.
  * @typeParam R - The return type of the handler.
  */
-export type NotionPropertyDefinition<T extends NotionPropertyTypeEnum, R = any> = {
+export type AdapterPropertyDefinition<T extends AdapterPropertyTypeEnum, R = any> = {
   type: T
   handler: ValueHandler<T, R>
 };
 /**
  * All possible immutable Notion property definitions.
  */
-export type NotionPropertyDefinitionEnum = {
-  [K in NotionPropertyTypeEnum]: NotionPropertyDefinition<K>;
-}[NotionPropertyTypeEnum];
+export type AdapterPropertyDefinitionEnum = {
+  [K in AdapterPropertyTypeEnum]: AdapterPropertyDefinition<K>;
+}[AdapterPropertyTypeEnum];
 /**
  * Type used to define a mutable Notion property in schema.
  *
@@ -97,20 +130,20 @@ export type NotionPropertyDefinitionEnum = {
  * @typeParam R - The return type of the handler.
  * @typeParam I - The input type of the composer.
  */
-export type NotionMutablePropertyDefinition<T extends NotionMutablePropertyTypeEnum, R = any, I = R> = NotionPropertyDefinition<T, R> & {
+export type AdapterMutablePropertyDefinition<T extends AdapterMutablePropertyTypeEnum, R = any, I = R> = AdapterPropertyDefinition<T, R> & {
   composer: ValueComposer<T, I>
 };
 /**
  * All possible mutable Notion property definitions.
  */
-export type NotionMutablePropertyDefinitionEnum = {
-  [K in NotionMutablePropertyTypeEnum]: NotionMutablePropertyDefinition<K>;
-}[NotionMutablePropertyTypeEnum];
+export type AdapterMutablePropertyDefinitionEnum = {
+  [K in AdapterMutablePropertyTypeEnum]: AdapterMutablePropertyDefinition<K>;
+}[AdapterMutablePropertyTypeEnum];
 
 /**
  * All possible values for the definition of a Notion property.
  */
-export type DBSchemaValueDefinition = NotionPropertyDefinitionEnum | NotionMutablePropertyDefinitionEnum | '__id';
+export type DBSchemaValueDefinition = AdapterPropertyDefinitionEnum | AdapterMutablePropertyDefinitionEnum;
 /**
  * Type of schema for one Notion database.
  */
@@ -125,8 +158,7 @@ export type DBSchemasType = Record<string, DBSchemaType>;
  *
  * @typeParam T - The type of Notion property definition.
  */
-export type PropertyInfer<T extends DBSchemaValueDefinition> =
-  T extends NotionPropertyDefinitionEnum ? ReturnType<T['handler']> : string;
+export type PropertyInfer<T extends DBSchemaValueDefinition> = ReturnType<T['handler']>;
 /**
  * Infer the type of object after converting all properties in one Notion database.
  *
@@ -143,8 +175,8 @@ export type DBInfer<T extends DBSchemaType> = {
 export type DBObjectTypesInfer<DBS extends DBSchemasType> = {
   [K in keyof DBS]: DBInfer<DBS[K]>
 }
-export type DBNamesWithPropertyType<T extends DBSchemasType, P extends NotionPropertyTypeEnum> = {
-  [K in keyof T]: KeysWithValueType<T[K], NotionPropertyDefinition<P>> extends never ? never : K
+export type DBNamesWithPropertyType<T extends DBSchemasType, P extends AdapterPropertyTypeEnum> = {
+  [K in keyof T]: KeysWithValueType<T[K], AdapterPropertyDefinition<P>> extends never ? never : K
 }[keyof T];
 
 /**
@@ -153,7 +185,7 @@ export type DBNamesWithPropertyType<T extends DBSchemasType, P extends NotionPro
  * @typeParam T - The type of Notion mutable property definition.
  */
 export type MutateInfer<T extends DBSchemaValueDefinition> =
-  T extends NotionMutablePropertyDefinitionEnum ?
+  T extends AdapterMutablePropertyDefinitionEnum ?
     (T['composer'] extends ValueComposer<T['type'], infer I> ? I : never) : never
 /**
  * Infer the type of object that can be used to mutate entries in one Notion database.

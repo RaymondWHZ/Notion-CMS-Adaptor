@@ -1,24 +1,28 @@
 import {expect, expectError, typesAssignable, typesEqual} from "./utils";
 import {
   DBInfer,
-  NotionMutablePropertyDefinition,
+  AdapterMutablePropertyDefinition,
   NotionMutablePropertyTypeEnum,
-  NotionPropertyDefinition,
-  NotionPropertyDefinitionEnum, PropertyInfer, MutateInfer, KeysWithValueType, DBNamesWithPropertyType
+  AdapterPropertyDefinition,
+  PropertyInfer, MutateInfer, KeysWithValueType, DBNamesWithPropertyType,
+  NotionPageMetadataKeys,
+  AdapterPropertyDefinitionEnum
 } from "../src";
+
+expect<typesAssignable<NotionPageMetadataKeys, 'id' | 'created_by' | 'parent'>>()
 
 expect<typesAssignable<NotionMutablePropertyTypeEnum, 'number' | 'rich_text' | 'title' | 'files'>>()
 expectError<typesAssignable<NotionMutablePropertyTypeEnum, 'rollup'>>()
 expectError<typesAssignable<NotionMutablePropertyTypeEnum, 'formula'>>()
 
-expect<typesAssignable<NotionPropertyDefinitionEnum, NotionPropertyDefinition<'number'> | NotionPropertyDefinition<'rich_text'>>>()
+expect<typesAssignable<AdapterPropertyDefinitionEnum, AdapterPropertyDefinition<'number'> | AdapterPropertyDefinition<'rich_text'>>>()
 
 expect<typesAssignable<
-  NotionMutablePropertyDefinition<'rich_text'>['composer'],
+  AdapterMutablePropertyDefinition<'rich_text'>['composer'],
   (value: string) => [{ text: { content: string } }]
 >>()
 expectError<typesAssignable<
-  NotionMutablePropertyDefinition<'rich_text'>['composer'],
+  AdapterMutablePropertyDefinition<'rich_text'>['composer'],
   (value: string) => string
 >>()
 
@@ -26,6 +30,17 @@ expect<typesEqual<string, PropertyInfer<{
   type: 'title',
   handler: () => string
 }>>>()
+
+expect<typesEqual<string, PropertyInfer<{
+  type: '__id',
+  handler: () => string,
+}>>>()
+
+expect<typesEqual<string, PropertyInfer<{
+  type: '__icon',
+  handler: () => string,
+}>>>()
+
 type Schema = {
   a: {
     type: 'title',

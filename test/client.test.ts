@@ -1,6 +1,6 @@
 import { expect, test, spyOn } from "bun:test";
 import { Client } from "@notionhq/client";
-import { __id, createDBSchemas, createNotionDBClient, metadata, multi_select, mutableMetadata, relation } from "../src";
+import { __id, createDBSchemas, createNotionDBClient, multi_select, mutableMetadata, relation } from "../src";
 import {PageObjectResponse, QueryDatabaseResponse} from "@notionhq/client/build/src/api-endpoints";
 
 const TEST_DB_ID = '0000';

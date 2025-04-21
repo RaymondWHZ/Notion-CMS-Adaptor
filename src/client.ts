@@ -17,7 +17,7 @@ import type {
   NotionPageMetadataKeys,
   NotionPageMetadataKeyEnum,
   AdapterMutablePropertyTypeEnum,
-  NotionMutablePageMetadataKeys,
+  NotionMutablePageMetadataKeys, PropertyType,
 } from "./types";
 
 function isAllFullPage(results: Array<PageObjectResponse | PartialPageObjectResponse | DatabaseObjectResponse | PartialDatabaseObjectResponse>): results is Array<PageObjectResponse> {
@@ -28,25 +28,28 @@ function isMetadataType(type: AdapterPropertyTypeEnum): type is NotionPageMetada
   return type.startsWith('__');
 }
 
-function processRow<T extends DBSchemaType>(
-  result: PageObjectResponse,
+async function processRow<T extends DBSchemaType>(
+  page: PageObjectResponse,
   schema: T,
-): DBInfer<T> {
+  client: Client
+): Promise<DBInfer<T>> {
   const transformedResult = {} as DBInfer<T>;
   for (const [key, def] of Object.entries(schema) as [keyof T, DBSchemaValueDefinition][]) {
     const type: AdapterPropertyTypeEnum = def.type;
+    let property: PropertyType<typeof type>;
     let value: ValueType<typeof type>;
     if (isMetadataType(type)) {
       // Get page metadata
       const rawKey = type.slice(2) as NotionPageMetadataKeys;
-      value = result[rawKey];
+      property = page[rawKey];
+      value = page[rawKey];
     } else {
       // Get page property
       const name = key.toString();
-      if (!(name in result.properties)) {
+      if (!(name in page.properties)) {
         throw Error(`Property ${name} is not found`);
       }
-      const property = result.properties[name];
+      property = page.properties[name];
       if (property.type !== type) {
         throw Error(`Property ${name} type mismatch: ${property.type} !== ${type}`);
       }
@@ -54,16 +57,21 @@ function processRow<T extends DBSchemaType>(
       value = property[type];
     }
     const handler = def.handler as ValueHandler<typeof type>;
-    transformedResult[key] = handler(value, result);
+    transformedResult[key] = await Promise.resolve(handler(value, { property, page, client }));
   }
   return transformedResult;
 }
 
-function processRows<T extends DBSchemaType>(
+async function processRows<T extends DBSchemaType>(
   results: Array<PageObjectResponse>,
-  schema: T
-): DBInfer<T>[] {
-  return results.map(result => processRow(result, schema));
+  schema: T,
+  client: Client
+): Promise<DBInfer<T>[]> {
+  const processedResults = [] as DBInfer<T>[]
+  for (const result of results) {
+    processedResults.push(await processRow(result, schema, client));
+  }
+  return processedResults
 }
 
 function processKVResults<
@@ -297,7 +305,7 @@ export function createNotionDBClient<
         if (!isAllFullPage(results)) {
           throw Error('Not all results are full page');
         }
-        return processRows(results, dbSchemas[db]);
+        return await processRows(results, dbSchemas[db], client);
       });
     },
 
@@ -329,7 +337,7 @@ export function createNotionDBClient<
         if (response.parent.type !== 'database_id' || response.parent.database_id !== dbId) {
           throw Error('Page not found in database');
         }
-        return processRow(response, dbSchemas[db]);
+        return await processRow(response, dbSchemas[db], client);
       });
     },
 
@@ -417,7 +425,7 @@ export function createNotionDBClient<
           block_id: uniqueResult.id
         });
 
-        const result = processRow(uniqueResult, dbSchemas[db]);
+        const result = await processRow(uniqueResult, dbSchemas[db], client);
         const append = {} as Record<C, NotionPageContent>;
         append[contentProperty] = blockResponse.results;
         return Object.assign(result, append);
@@ -445,7 +453,7 @@ export function createNotionDBClient<
         if (!isAllFullPage(results)) {
           throw Error('Not all results are full page');
         }
-        const processedResults = processRows(results, dbSchemas[db]);
+        const processedResults = await processRows(results, dbSchemas[db], client);
         return processKVResults(processedResults, keyProp as string, valueProp as string) as R;
       });
     },
@@ -497,7 +505,7 @@ export function createNotionDBClient<
         if (!('properties' in result)) {
           throw Error('Not a full page');
         }
-        return processRow(result, dbSchemas[db]);
+        return await processRow(result, dbSchemas[db], client);
       });
     },
 
@@ -517,7 +525,7 @@ export function createNotionDBClient<
       if (!('properties' in result)) {
         throw Error('Not a full page');
       }
-      return processRow(result, dbSchemas[db]);
+      return await processRow(result, dbSchemas[db], client);
     },
 
     /**

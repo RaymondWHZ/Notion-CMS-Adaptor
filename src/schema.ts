@@ -312,7 +312,7 @@ const filesOptions = {
    * This is not an official API and may break at any time. Use at your own risk.
    */
   notionImageUrls() {
-    return this.handleUsing((value, { id }) => value.reduce((acc, file) => {
+    return this.handleUsing((value, { page: { id } }) => value.reduce((acc, file) => {
       let result: string | undefined = undefined;
       if ('file' in file) {
         result = convertNotionImage(id, file.file.url);
@@ -329,7 +329,7 @@ const filesOptions = {
    * This is not an official API and may break at any time. Use at your own risk.
    */
   singleNotionImageUrl() {
-    return this.handleUsing((value, { id }) => {
+    return this.handleUsing((value, { page: { id } }) => {
       const file = value[0];
       if (!file) {
         return '';
@@ -567,7 +567,7 @@ const relationOptions = {
    */
   objects<M extends RollupMapping>(mapping: M) {
     return this.handleAndComposeUsing({
-      handler: (value, page) => {
+      handler: (value, { page }) => {
         const { properties } = page;
         return value.map(({ id }, index) => {
           const mappedObject = {} as InferObject<M>;
@@ -802,7 +802,7 @@ const urlOptions = {
   }
 }
 /**
- * Define a url property.
+ * Define an url property.
  */
 export function url() {
   return urlOptions;

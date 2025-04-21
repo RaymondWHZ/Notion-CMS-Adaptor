@@ -4,6 +4,7 @@ import type {
   PartialBlockObjectResponse,
   UpdatePageParameters
 } from "@notionhq/client/build/src/api-endpoints";
+import {Client} from "@notionhq/client";
 
 /**
  * Infer the type of key that has a specific value type in a record.
@@ -77,6 +78,22 @@ export type AdapterPropertyTypeEnum = NotionPropertyTypeEnum | NotionPageMetadat
 export type AdapterMutablePropertyTypeEnum = NotionMutablePropertyTypeEnum | NotionMutablePageMetadataKeyEnum;
 
 /**
+ * Infer a Notion property.
+ */
+export type PropertyType<T extends AdapterPropertyTypeEnum> =
+  T extends NotionPropertyTypeEnum ? (Extract<NotionPropertyValues, { type: T }> extends infer P ? P : never)
+    : T extends NotionPageMetadataKeyEnum ? PageObjectResponse[RK<T>] : never;
+
+/**
+ * Context that might be necessary for the handler.
+ */
+export type HandlerContext<T extends AdapterPropertyTypeEnum> = {
+  property: PropertyType<T>
+  page: PageObjectResponse
+  client: Client
+}
+
+/**
  * Infer the underlying value of a Notion property in response.
  *
  * @typeParam T - The type of Notion property.
@@ -90,7 +107,7 @@ export type ValueType<T extends AdapterPropertyTypeEnum> =
  * @typeParam T - The type of Notion property.
  * @typeParam R - The return type of the handler.
  */
-export type ValueHandler<T extends AdapterPropertyTypeEnum, R = any> = (value: ValueType<T>, page: PageObjectResponse) => R;
+export type ValueHandler<T extends AdapterPropertyTypeEnum, R = any> = (value: ValueType<T>, context: HandlerContext<T>) => R | Promise<R>;
 /**
  * Infer the type that can mutate a Notion property.
  *
@@ -174,7 +191,7 @@ export type DBSchemasType = Record<string, DBSchemaType>;
  *
  * @typeParam T - The type of Notion property definition.
  */
-export type PropertyInfer<T extends DBSchemaValueDefinition> = ReturnType<T['handler']>;
+export type PropertyInfer<T extends DBSchemaValueDefinition> = Awaited<ReturnType<T['handler']>>;
 /**
  * Infer the type of object after converting all properties in one Notion database.
  *

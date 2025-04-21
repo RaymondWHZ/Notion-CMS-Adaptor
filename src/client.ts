@@ -4,7 +4,7 @@ import type {
   QueryDatabaseParameters,
   UpdatePageParameters
 } from "@notionhq/client/build/src/api-endpoints";
-import {Client, isFullPage} from "@notionhq/client";
+import {Client, collectPaginatedAPI, isFullPage} from "@notionhq/client";
 import type {
   DBInfer, DBMutateInfer,
   DBSchemasType,
@@ -233,7 +233,7 @@ function createUseDatabaseFunction<
 /**
  * Query parameters. Same as Notions API query parameters but without `database_id` and `filter_properties`.
  */
-export type NotionDBQueryParameters = Omit<QueryDatabaseParameters, 'database_id' | 'filter_properties'>
+export type NotionDBQueryParameters = Pick<QueryDatabaseParameters, 'filter' | 'sorts' | 'in_trash' | 'archived'>;
 /**
  * Adds the content of a page to the type of the object.
  */
@@ -277,17 +277,27 @@ export function createNotionDBClient<
      *
      * @param db The name of the database.
      * @param params The query parameters.
+     * @param limit The maximum number of results to return (max 100). If not provided, all results will be returned.
      */
-    async query<T extends DBName>(db: T, params: NotionDBQueryParameters = {}): Promise<DBInfer<S[T]>[]> {
+    async query<T extends DBName>(db: T, params: NotionDBQueryParameters = {}, limit?: number): Promise<DBInfer<S[T]>[]> {
       return useDatabaseId(db, async (id) => {
-        const response = await client.databases.query({
-          database_id: id,
-          ...params
-        });
-        if (!isAllFullPage(response.results)) {
+        let results;
+        if (limit) {
+          results = (await client.databases.query({
+            ...params,
+            database_id: id,
+            page_size: limit
+          })).results;
+        } else {
+          results = await collectPaginatedAPI(client.databases.query, {
+            ...params,
+            database_id: id
+          });
+        }
+        if (!isAllFullPage(results)) {
           throw Error('Not all results are full page');
         }
-        return processRows(response.results, dbSchemas[db]);
+        return processRows(results, dbSchemas[db]);
       });
     },
 
@@ -298,7 +308,7 @@ export function createNotionDBClient<
      * @param params The query parameters.
      */
     async queryFirst<T extends DBName>(db: T, params: NotionDBQueryParameters = {}): Promise<DBInfer<S[T]> | undefined> {
-      const results = await this.query(db, params);
+      const results = await this.query(db, params, 1);
       return results[0];
     },
 
@@ -329,10 +339,9 @@ export function createNotionDBClient<
      * @param id The ID of the page.
      */
     async queryPageContentById(id: string): Promise<NotionPageContent> {
-      const blockResponse = await client.blocks.children.list({
+      return await collectPaginatedAPI(client.blocks.children.list, {
         block_id: id
       });
-      return blockResponse.results;
     },
 
     /**
@@ -430,13 +439,13 @@ export function createNotionDBClient<
       R extends Record<string, DB[G]>
     >(db: T, keyProp: F, valueProp: G): Promise<R> {
       return useDatabaseId(db, async (id) => {
-        const response = await client.databases.query({
+        const results = await collectPaginatedAPI(client.databases.query, {
           database_id: id,
         });
-        if (!isAllFullPage(response.results)) {
+        if (!isAllFullPage(results)) {
           throw Error('Not all results are full page');
         }
-        const processedResults = processRows(response.results, dbSchemas[db]);
+        const processedResults = processRows(results, dbSchemas[db]);
         return processKVResults(processedResults, keyProp as string, valueProp as string) as R;
       });
     },
@@ -457,7 +466,8 @@ export function createNotionDBClient<
             title: {
               equals: title
             }
-          }
+          },
+          page_size: 1
         });
         if (response.results.length === 0) {
           throw Error('Not found');

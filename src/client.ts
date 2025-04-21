@@ -281,6 +281,11 @@ export function createNotionDBClient<
   return {
 
     /**
+     * Reference of underlying Notion client.
+     */
+    notionClient: client,
+
+    /**
      * Query a database.
      *
      * @param db The name of the database.
@@ -541,5 +546,5 @@ export function createNotionDBClient<
         in_trash: true
       });
     }
-  };
+  } as const;
 }

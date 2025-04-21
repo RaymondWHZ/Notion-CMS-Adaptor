@@ -154,15 +154,10 @@ export function mutableMetadata<T extends NotionMutablePageMetadataKeys>(key: T)
   return makeMutableDefaultOptions(`__${key}`);
 }
 
-const __idOptions = {
-  ...makeDefaultOptions('__id'),
-};
+const __idOptions = metadata('id');
 
 /**
- * Reference the id metadata.
- * 
- * Deprecated. Use `metadata('id')` instead.
- * @deprecated
+ * Reference the id metadata. Same as using 'metadata("id")'.
  */
 export function __id() {
   return __idOptions;

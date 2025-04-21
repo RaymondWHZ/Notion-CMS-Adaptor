@@ -1,15 +1,19 @@
 import type {
-  DBSchemasType,
-  AdapterPropertyDefinition,
   AdapterMutablePropertyDefinition,
-  ValueHandler,
-  ValueType, ValueComposer, MutateValueType,
-  AdapterPropertyTypeEnum,
   AdapterMutablePropertyTypeEnum,
+  AdapterPropertyDefinition,
+  AdapterPropertyTypeEnum,
+  DBSchemasType,
+  MutateValueType,
+  NotionMutablePageMetadataKeys,
   NotionPageMetadataKeys,
-  NotionMutablePageMetadataKeys
+  NotionPropertyDefinition,
+  PropertyInfer,
+  ValueComposer,
+  ValueHandler,
+  ValueType
 } from "./types";
-import type {RichTextItemResponse} from "@notionhq/client/build/src/api-endpoints";
+import type {PageObjectResponse, RichTextItemResponse} from "@notionhq/client/build/src/api-endpoints";
 
 /**
  * A type safe way to define database schemas. Directly return the schema object.
@@ -524,6 +528,18 @@ export function phone_number() {
   return phoneNumberOptions;
 }
 
+interface RollupMappingItem {
+  rollupField: string
+  def: NotionPropertyDefinition
+}
+interface RollupMapping {
+  [key: string]: RollupMappingItem | AdapterPropertyDefinition<'__id'>
+}
+type InferObject<T extends RollupMapping> = {
+  [K in keyof T]:
+    T[K] extends RollupMappingItem ? PropertyInfer<T[K]['def']> :
+    T[K] extends AdapterPropertyDefinition<'__id'> ? PropertyInfer<T[K]> : never
+}
 const relationOptions = {
   ...makeMutableDefaultOptions('relation'),
   /**
@@ -543,8 +559,50 @@ const relationOptions = {
       handler: value => value[0].id,
       composer: (value) => [{ id: value }]
     });
+  },
+  /**
+   * Construct a list of objects from the relations using related rollup fields. Supports mutation using a list of ids.
+   *
+   * @param mapping
+   */
+  objects<M extends RollupMapping>(mapping: M) {
+    return this.handleAndComposeUsing({
+      handler: (value, page) => {
+        const { properties } = page;
+        return value.map(({ id }, index) => {
+          const mappedObject = {} as InferObject<M>;
+          Object.entries(mapping).forEach(([key, item]) => {
+            if ('rollupField' in item) {
+              const { rollupField, def } = item;
+              const rollupProperty = properties[rollupField];
+              if (!rollupProperty || rollupProperty.type !== 'rollup' || rollupProperty.rollup.type !== 'array') {
+                throw Error('Invalid rollup field: ' + rollupField);
+              }
+              const property = rollupProperty.rollup.array[index];
+              if (property.type !== def.type) {
+                throw Error(`Property ${rollupField} type mismatch: ${property.type} !== ${def.type}`);
+              }
+              // @ts-expect-error
+              const value = property[def.type] as ValueType<typeof def.type>;
+              const handler = def.handler as ValueHandler<typeof def.type>;
+              // @ts-expect-error
+              mappedObject[key] = handler(value, null as PageObjectResponse);
+            } else {
+              if (item.type !== '__id') {
+                throw Error('Invalid relation mapping: ' + key);
+              }
+              // @ts-expect-error
+              mappedObject[key] = item.handler(id, null as PageObjectResponse);
+            }
+          })
+          return mappedObject;
+        });
+      },
+      composer: (value: string[]) => value.map(id => ({ id }))
+    })
   }
 }
+
 /**
  * Define a relation property.
  */

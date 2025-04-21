@@ -120,6 +120,12 @@ export type AdapterPropertyDefinition<T extends AdapterPropertyTypeEnum, R = any
 /**
  * All possible immutable Notion property definitions.
  */
+export type NotionPropertyDefinitionEnum = {
+  [K in NotionPropertyTypeEnum]: AdapterPropertyDefinition<K>;
+}[NotionPropertyTypeEnum];
+/**
+ * All possible immutable Adaptor property definitions.
+ */
 export type AdapterPropertyDefinitionEnum = {
   [K in AdapterPropertyTypeEnum]: AdapterPropertyDefinition<K>;
 }[AdapterPropertyTypeEnum];
@@ -136,12 +142,22 @@ export type AdapterMutablePropertyDefinition<T extends AdapterMutablePropertyTyp
 /**
  * All possible mutable Notion property definitions.
  */
+export type NotionMutablePropertyDefinitionEnum = {
+  [K in NotionMutablePropertyTypeEnum]: AdapterMutablePropertyDefinition<K>;
+}[NotionMutablePropertyTypeEnum];
+/**
+ * All possible mutable Adaptor property definitions.
+ */
 export type AdapterMutablePropertyDefinitionEnum = {
   [K in AdapterMutablePropertyTypeEnum]: AdapterMutablePropertyDefinition<K>;
 }[AdapterMutablePropertyTypeEnum];
 
 /**
- * All possible values for the definition of a Notion property.
+ * All possible property definitions for a pure Notion property.
+ */
+export type NotionPropertyDefinition = NotionPropertyDefinitionEnum | NotionMutablePropertyDefinitionEnum;
+/**
+ * All possible values for the definition of an Adaptor property.
  */
 export type DBSchemaValueDefinition = AdapterPropertyDefinitionEnum | AdapterMutablePropertyDefinitionEnum;
 /**

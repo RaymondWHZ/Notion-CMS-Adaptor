@@ -1,6 +1,6 @@
 import { expect, test, spyOn } from "bun:test";
 import { Client } from "@notionhq/client";
-import { __id, createDBSchemas, createNotionDBClient, metadata, multi_select, mutableMetadata } from "../src";
+import { __id, createDBSchemas, createNotionDBClient, metadata, multi_select, mutableMetadata, relation } from "../src";
 import {PageObjectResponse, QueryDatabaseResponse} from "@notionhq/client/build/src/api-endpoints";
 
 const TEST_DB_ID = '0000';
@@ -15,6 +15,37 @@ const TEST_PAGE_RESPONSE = {
       multi_select: [{
         name: 'personal',
       }]
+    },
+    tasks: {
+      type: 'relation',
+      relation: [
+        {
+          id: '0002'
+        },
+        {
+          id: '0003'
+        }
+      ]
+    },
+    task_tags: {
+      type: 'rollup',
+      rollup: {
+        type: 'array',
+        array: [
+          {
+            type: 'multi_select',
+            multi_select: [{
+              name: 'active',
+            }]
+          },
+          {
+            type: 'multi_select',
+            multi_select: [{
+              name: 'backlog',
+            }]
+          }
+        ]
+      }
     }
   },
   in_trash: true,
@@ -25,6 +56,13 @@ const dbSchema = createDBSchemas({
     _id: __id(),
     tags: multi_select().stringEnums('personal', 'work', 'backlog'),
     _in_trash: mutableMetadata("in_trash"),
+    tasks: relation().objects({
+      _id: __id(),
+      tags: {
+        rollupField: 'task_tags',
+        def: multi_select().stringEnums('active', 'backlog'),
+      }
+    })
   },
 })
 const notionClient = new Client();
@@ -67,6 +105,15 @@ test("query", async () => {
   expect(res[0]._id).toBe(TEST_PAGE_ID)
   expect(res[0].tags).toContain('personal')
   expect(res[0]._in_trash).toBe(true)
+  expect(res[0].tasks).toBeArrayOfSize(2)
+  expect(res[0].tasks[0]).toEqual({
+    _id: '0002',
+    tags: ['active']
+  })
+  expect(res[0].tasks[1]).toEqual({
+    _id: '0003',
+    tags: ['backlog']
+  })
 
   query.mockRestore()
 });

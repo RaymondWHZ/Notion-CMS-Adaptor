@@ -9,7 +9,7 @@ import {
   rich_text,
   rollup,
   status,
-  title
+  title, relation
 } from "../src";
 import {expect, expectError, typesAssignable, typesEqual} from "./utils";
 import {RichTextItemResponse} from "@notionhq/client/build/src/api-endpoints";
@@ -31,6 +31,13 @@ const dbSchemas  = createDBSchemas({
         }
         return acc
       }, [] as string[])
+    }),
+    tasks: relation().objects({
+      _id: __id(),
+      tags: {
+        rollupField: 'task_tags',
+        def: multi_select().stringEnums('active', 'backlog'),
+      }
     }),
     _in_trash: metadata("in_trash"),
   },
@@ -55,6 +62,10 @@ expect<typesEqual<Project, {
   status: 'in-progress' | 'done'
   active_tasks: number
   task_status: string[]
+  tasks: {
+    _id: string,
+    tags: ('active' | 'backlog')[]
+  }[],
   _in_trash: boolean
 }>>()
 

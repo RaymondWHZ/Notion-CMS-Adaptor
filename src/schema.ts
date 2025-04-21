@@ -13,7 +13,7 @@ import type {
   ValueHandler,
   ValueType
 } from "./types";
-import type {PageObjectResponse, RichTextItemResponse} from "@notionhq/client/build/src/api-endpoints";
+import type { RichTextItemResponse } from "@notionhq/client/build/src/api-endpoints";
 
 /**
  * A type safe way to define database schemas. Directly return the schema object.
@@ -586,13 +586,13 @@ const relationOptions = {
               const value = property[def.type] as ValueType<typeof def.type>;
               const handler = def.handler as ValueHandler<typeof def.type>;
               // @ts-expect-error
-              mappedObject[key] = handler(value, null as PageObjectResponse);
+              mappedObject[key] = handler(value, {});
             } else {
               if (item.type !== '__id') {
                 throw Error('Invalid relation mapping: ' + key);
               }
               // @ts-expect-error
-              mappedObject[key] = item.handler(id, null as PageObjectResponse);
+              mappedObject[key] = item.handler(id, {});
             }
           })
           return mappedObject;
